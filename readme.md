@@ -1,4 +1,8 @@
-<h1 align="center">Longshot</h1>
+<h1 align="center">
+  <img src="assets/longshot.png" alt="Longshot" width="200">
+  <br>
+  <b>Longshot</b>
+</h1>
 
 <h4 align="center">The Legend of Zelda: Ocarina of Time (Nintendo Switch 2) running natively on Windows & Linux, with no emulator.</h4>
 
