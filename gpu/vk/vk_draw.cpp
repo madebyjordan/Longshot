@@ -6165,6 +6165,8 @@ bool prepare_is_update() {
     fclose(f);
     return read && have != program_cache_stamp();
 }
+std::atomic<size_t> prep_translated_n{0}, prep_compiled_n{0};
+std::atomic<int> prep_workers_n{0};
 // (longshot) A compute variant for two or more texture answers that are not the plain one: the prepare translates these
 // combinations (cheap) but compiles none before the game. They were half of the first start's compute pipelines (5095 of
 // 10107, ~13 min of AMD's compiler on a Ryzen 5 5600) and play used 4 of them from new game to the Deku Tree's emerald
@@ -6249,7 +6251,7 @@ bool prepare_run(void (*progress)(size_t done, size_t total), bool background) {
         // where the driver's own cache missed them, AMD's 15 s culling compiles each time)
         if (guarded_compute(pcache, &ci, &pl) == VK_SUCCESS && pl) {
             vkDestroyPipeline(dev.device, pl, nullptr);
-            libs++;
+            libs++, prep_compiled_n++;
             pcache_built_since_save++;
         }
         if (p.layout) vkDestroyPipelineLayout(dev.device, p.layout, nullptr), p.layout = VK_NULL_HANDLE;
@@ -6267,20 +6269,20 @@ bool prepare_run(void (*progress)(size_t done, size_t total), bool background) {
             if (seed_is_compute(k)) {   // (hookshot) a compute program with each of its texture variants, each warmed
                 if (i % 3 == 0) {
                     const SeedVariants v = seed_compute(k, 64, warm_compute);
-                    made += v.variants != 0, variants += v.variants, asking += v.variants > 1, capped += v.capped && v.variants;
+                    made += v.variants != 0, prep_translated_n += v.variants, variants += v.variants, asking += v.variants > 1, capped += v.capped && v.variants;
                 }
                 done++;
                 continue;
             }
             if (std::unique_ptr<Program> p = seed_program(k, (int)(i % 3))) {
-                if (!p->failed) made++;
+                if (!p->failed) made++, prep_translated_n++;
                 if (!p->failed && warm && !p->compute) {
                     ensure_layout(*p);
                     Targets at{};
                     for (int part = 1; part <= 2; part++)
                         if (const VkPipeline lib = build_graphics(*p, *blank, at, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, part)) {
                             vkDestroyPipeline(dev.device, lib, nullptr);
-                            libs++;
+                            libs++, prep_compiled_n++;
                         }
                 }
                 for (Stage& st : p->stages)
@@ -6296,6 +6298,7 @@ bool prepare_run(void (*progress)(size_t done, size_t total), bool background) {
     // (in play: a quarter of the CPUs, two to four, the game's own threads before them)
     const unsigned workers = background ? std::clamp(cpus / 4, 2u, 4u) : std::clamp(cpus / 2, 1u, 32u);
     for (unsigned i = 0; i < workers; i++) threads.emplace_back(worker);
+    prep_workers_n.store((int)threads.size());
     while (done.load() < total && !prepare_stopped()) {
         if (progress) progress(done.load() / 3, programs);   // (in programs, as the log counts them, not programs times variants)
         Sleep(100);
@@ -6435,6 +6438,7 @@ void precompile_run(void (*progress)(size_t done, size_t total)) {
     std::vector<std::thread> threads;
     const unsigned cpus = std::max(1u, std::thread::hardware_concurrency());
     for (unsigned i = 0; i < std::min(cpus, 64u); i++) threads.emplace_back(worker);
+    prep_workers_n.store((int)threads.size());
     static const int stall_s = getenv("RX_VK_PRECOMPILE_STALL_S") ? atoi(getenv("RX_VK_PRECOMPILE_STALL_S")) : 30;
     size_t last_done = 0;
     auto last_change = std::chrono::steady_clock::now();
@@ -6510,6 +6514,7 @@ void predict_run(void (*progress)(size_t done, size_t total)) {
     std::vector<std::thread> threads;
     const unsigned cpus = std::max(1u, std::thread::hardware_concurrency());
     for (unsigned i = 0; i < std::clamp(cpus / 2, 1u, 32u); i++) threads.emplace_back(worker);
+    prep_workers_n.store((int)threads.size());
     while (next.load() < keys.size() + threads.size() && !prepare_stopped() && !out_of_time.load()) {
         if (progress) progress(done.load(), predicted.size());
         Sleep(100);

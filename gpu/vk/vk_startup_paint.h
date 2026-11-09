@@ -17,7 +17,7 @@
 namespace mkwvk {
 
 constexpr int kLogoH = 112;                        // (the logo's height at 720 lines)
-constexpr int kStartupW = 640, kStartupH = 280 + kLogoH + 16;   // (the panel at 720 lines; it scales with the window)
+constexpr int kStartupW = 640, kStartupH = 328 + kLogoH + 16;   // (longshot: +48 for the diagnostics' three lines)   // (the panel at 720 lines; it scales with the window)
 
 /// The panel's scale in percent for a w x h window: by the height (100 at 720 lines, 150 at 1080, 200 at 1440), never wider
 /// than the window allows
@@ -127,13 +127,13 @@ inline void paint_startup_view(HDC dc, uint32_t w, uint32_t h, int pct, const St
     SetBkMode(dc, TRANSPARENT);
     const int cx = (int)w / 2;
     HFONT mark = font(S(40), FW_BOLD), ver = font(S(10.5), FW_NORMAL), step = font(S(12), FW_BOLD), title = font(S(22), FW_SEMIBOLD),
-          body = font(S(14), FW_NORMAL), hint = font(S(13), FW_NORMAL);
+          body = font(S(14), FW_NORMAL), hint = font(S(13), FW_NORMAL), small = font(S(11.5), FW_NORMAL);
     HGDIOBJ old = SelectObject(dc, mark);
     // the logo, the wordmark and the version under it
     GdiFlush();
     blit_logo(bits, (int)w, (int)h, cx, 0, S(kLogoH));
     SetTextColor(dc, ink);
-    spaced(dc, "HOOKSHOT", cx, Y(0), S(7), true);
+    spaced(dc, "LONGSHOT", cx, Y(0), S(7), true);
     SelectObject(dc, ver);
     SetTextColor(dc, dim);
     SetTextAlign(dc, TA_CENTER | TA_TOP);
@@ -193,9 +193,15 @@ inline void paint_startup_view(HDC dc, uint32_t w, uint32_t h, int pct, const St
             TextOutA(dc, cx, Y(250), v.hint.c_str(), (int)v.hint.size());
         }
     }
+    if (!v.title.empty() && !v.diag.empty()) {   // (longshot) the diagnostics: small and dim, under the hint
+        SelectObject(dc, small);
+        SetTextColor(dc, RGB(88, 98, 92));
+        SetTextAlign(dc, TA_CENTER | TA_TOP);
+        for (size_t i = 0; i < v.diag.size() && i < 3; i++) TextOutA(dc, cx, Y(282 + 16 * (double)i), v.diag[i].c_str(), (int)v.diag[i].size());
+    }
     SetTextAlign(dc, TA_LEFT | TA_TOP);
     SelectObject(dc, old);
-    for (HFONT f : {mark, ver, step, title, body, hint}) DeleteObject(f);
+    for (HFONT f : {mark, ver, step, title, body, hint, small}) DeleteObject(f);
 }
 
 } // namespace mkwvk
