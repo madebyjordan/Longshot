@@ -69,6 +69,7 @@ ARGS = {
     "tests/test_lower_atomg_cas.py": ["--cxx", "g++"],
     "tests/test_wb_diff_split.py": ["--cxx", "g++"],
     "tests/test_native_suatom.py": ["--cxx", "clang++"],
+    "tests/test_vram_squeeze.py": ["--cxx", "g++"],
     "nx2/test_cbuf_table_extent.py": ["--cxx", "g++"],
     "nx2/test_dump_ssbo_read.py": ["--cxx", "g++"],
     "nx2/test_mesh_dynamic_state.py": ["--cxx", "g++"],

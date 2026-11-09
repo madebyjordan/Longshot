@@ -50,6 +50,7 @@
 #include "astc_bc_policy.h"
 #include "keep_rendered.h"
 #include "target_overlap.h"
+#include "vram_squeeze.h"
 #include "host_shaders/block_linear_unswizzle_2d_comp_spv.h"
 #include "vk_work.h"   // (after the others: counts the commands that do GPU work, for full_barrier)
 
@@ -3084,17 +3085,18 @@ void texture_frame(uint64_t completed) {
     // textures evicted freed space inside them that the driver still counted, so 10 frames later the budget shrank
     // again. A race kept ~3 GB free in the blocks and evicted and made again ~100 textures every 10 frames (1300 at
     // once), mostly the same ones: their uploads and decodes, and images made empty in the frame that drew them.
-    // The driver's own count near its limit (97%) still squeezes, whatever the blocks hold free: then it pages VRAM
-    // out. RX_VK_BUDGET_BY_BLOCKS=1: as before)
+    // The driver's own count near its limit (97%) still squeezes, by what half the blocks' free space cannot take:
+    // vram_squeeze.h. RX_VK_BUDGET_BY_BLOCKS=1: as before)
     static const bool by_blocks = getenv("RX_VK_BUDGET_BY_BLOCKS") != nullptr;
     const uint64_t pressure = by_blocks ? used : used - std::min(used, block_free);
     if (known && pressure > allowed / 10 * 9) {
         const uint64_t over = pressure - allowed / 10 * 9;
         budget = std::min(budget, total_bytes > over ? total_bytes - over : 0);
     }
-    if (known && !by_blocks && used > allowed / 100 * 97) {
-        const uint64_t over = used - allowed / 100 * 97;
-        budget = std::min(budget, total_bytes > over ? total_bytes - over : 0);
+    if (known && !by_blocks) {
+        static const bool whole_excess = getenv("RX_VK_BUDGET_SQUEEZE_ALL") != nullptr;
+        if (const uint64_t over = vram_squeeze::over_97(used, allowed, block_free, whole_excess))
+            budget = std::min(budget, total_bytes > over ? total_bytes - over : 0);
     }
     if (frame_no % 600 == 0) {
         vma_log_heaps();
