@@ -5420,15 +5420,6 @@ bool precompile_wanted() {
     return on;
 }
 /// Every shader of the game, before its first start (vk_shader.cpp, the seed): once for this translator. True: prepared now
-// (longshot) The prepare's and the prediction's workers: every CPU thread but two, below normal priority. Hookshot used half: on all of
-// them at High the driver's compiles froze the whole PC, but these run below normal, and half left a 6-core, 12-thread CPU at ~50%.
-// RX_VK_PREPARE_THREADS=n (hookshot_env.txt) chooses
-static unsigned prepare_threads(unsigned cpus) {
-    if (const char* e = getenv("RX_VK_PREPARE_THREADS"))
-        if (const int n = atoi(e); n > 0) return std::min((unsigned)n, 64u);
-    return std::clamp(cpus > 4 ? cpus - 2 : cpus / 2, 1u, 32u);
-}
-
 bool prepare_run(void (*progress)(size_t done, size_t total)) {
     const auto t0 = std::chrono::steady_clock::now();
     char exe[MAX_PATH];
@@ -5525,7 +5516,7 @@ bool prepare_run(void (*progress)(size_t done, size_t total)) {
     };
     std::vector<std::thread> threads;
     const unsigned cpus = std::max(1u, std::thread::hardware_concurrency());
-    for (unsigned i = 0; i < prepare_threads(cpus); i++) threads.emplace_back(worker);
+    for (unsigned i = 0; i < std::clamp(cpus / 2, 1u, 32u); i++) threads.emplace_back(worker);
     while (done.load() < total) {
         if (progress) progress(done.load(), total);
         Sleep(100);
@@ -5696,7 +5687,7 @@ void predict_run(void (*progress)(size_t done, size_t total)) {
     };
     std::vector<std::thread> threads;
     const unsigned cpus = std::max(1u, std::thread::hardware_concurrency());
-    for (unsigned i = 0; i < prepare_threads(cpus); i++) threads.emplace_back(worker);
+    for (unsigned i = 0; i < std::clamp(cpus / 2, 1u, 32u); i++) threads.emplace_back(worker);
     while (next.load() < keys.size() + threads.size()) {
         if (progress) progress(done.load(), predicted.size());
         Sleep(100);
