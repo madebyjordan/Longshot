@@ -5595,6 +5595,10 @@ void precompile_run(void (*progress)(size_t done, size_t total)) {
                 ci.stage.pName = "main";
                 pin_subgroup(ci.stage, p.workgroup[0]);
                 ci.layout = p.layout;
+                // (RX_VK_NOOPT=1 as the prepare's warm-up and the dispatches build them: without it, the first start after a
+                // new build missed every one the warm-up had just made and ran the optimizer on all 10107 again)
+                static const bool noopt = getenv("RX_VK_NOOPT") != nullptr;
+                if (noopt) ci.flags |= VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT;
                 VkPipeline made = VK_NULL_HANDLE;
                 if (vkCreateComputePipelines(dev.device, pcache, 1, &ci, nullptr, &made) != VK_SUCCESS) made = VK_NULL_HANDLE;
                 std::lock_guard lk(pre->mu);
