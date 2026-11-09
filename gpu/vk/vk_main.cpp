@@ -11,6 +11,7 @@
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <ctime>
 #include <thread>
 #include <vector>
 
@@ -551,6 +552,49 @@ void window_size(uint32_t* w, uint32_t* h) {
     if (width > 0 && height > 0) *w = (uint32_t)width, *h = (uint32_t)height;
 #endif
 }
+/// (longshot) The process's CPU time so far, in seconds (the start-up screen's diagnostics)
+double process_cpu_seconds() {
+#ifdef _WIN32
+    FILETIME c, e, k, u;
+    if (!GetProcessTimes(GetCurrentProcess(), &c, &e, &k, &u)) return 0;
+    return ((double)((uint64_t)k.dwHighDateTime << 32 | k.dwLowDateTime) + (double)((uint64_t)u.dwHighDateTime << 32 | u.dwLowDateTime)) / 1e7;
+#else
+    return (double)std::clock() / CLOCKS_PER_SEC;
+#endif
+}
+/// (longshot) The start-up screen's diagnostics, under its hint: the GPU, its driver and the workers; time, rate and CPU use; what
+/// has been made. RX_VK_STARTUP_DIAG=0: none
+struct StartupDiag {
+    double t = -1, cpu = 0, rate = -1, threads = -1;
+    size_t done = 0;
+    int stage = -1;
+    std::vector<std::string> lines(int stage_now, size_t done_now, double secs) {
+        if (secs - t >= 1.0) {   // (once a second)
+            const double c = process_cpu_seconds();
+            if (t >= 0) {
+                const double dt = secs - t;
+                threads = (c - cpu) / dt;
+                rate = stage_now == stage && done_now >= done ? (double)(done_now - done) / dt : -1;
+            }
+            t = secs, cpu = c, done = done_now, stage = stage_now;
+        }
+        const uint32_t dv = dev.props.driverVersion;
+        const unsigned cpus = std::max(1u, std::thread::hardware_concurrency());
+        char a[256], b[160], c[160];
+        snprintf(a, sizeof a, "%s  |  driver %u.%u.%u  |  %d workers", dev.props.deviceName, dv >> 22, (dv >> 12) & 0x3ff, dv & 0xfff,
+                 prep_workers_n.load());
+        const int whole = (int)secs;
+        int n = snprintf(b, sizeof b, "%d:%02d elapsed", whole / 60, whole % 60);
+        if (rate >= 0) n += snprintf(b + n, sizeof b - n, "  |  %.0f per second", rate);
+        if (threads >= 0) snprintf(b + n, sizeof b - n, "  |  CPU %.1f of %u threads", threads, cpus);
+        if (stage_now == 0)
+            snprintf(c, sizeof c, "%s shader variants translated  |  %s compute pipelines compiled",
+                     with_commas(prep_translated_n.load()).c_str(), with_commas(prep_compiled_n.load()).c_str());
+        else if (stage_now == 1) snprintf(c, sizeof c, "pipelines the notes predict, into the driver's cache");
+        else snprintf(c, sizeof c, "pipelines from earlier play, from the pipeline cache");
+        return {a, b, c};
+    }
+};
 void prepare_with_screen() {
     prep_ended = CreateEventA(nullptr, TRUE, FALSE, nullptr);
     prep_running.store(true);
@@ -581,6 +625,8 @@ void prepare_with_screen() {
         int eta_stage = -1;
         double next_log = 10;
         bool prepared = false;   // (this start prepares the programs: a first start after an update, two steps)
+        static const bool diag_on = [] { const char* e = getenv("RX_VK_STARTUP_DIAG"); return !e || atoi(e) != 0; }();
+        StartupDiag diag;
         uint32_t last_w = dev.swap_extent.width, last_h = dev.swap_extent.height;
         for (;;) {
             const bool finished = prep_finished.load(std::memory_order_acquire);
@@ -599,7 +645,8 @@ void prepare_with_screen() {
             StartupState st;
             st.stage = stage, st.done = done, st.total = total, st.left = left, st.secs = secs;
             st.prepared = prepared, st.finished = finished, st.stopping = prepare_stopped();
-            const StartupView view = startup_view(st);
+            StartupView view = startup_view(st);
+            if (diag_on && !finished && !st.stopping && !view.title.empty()) view.diag = diag.lines(stage, done, secs);
             startup_screen(&view);
             uint32_t w, h;
             window_size(&w, &h);

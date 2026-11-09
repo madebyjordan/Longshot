@@ -11,7 +11,7 @@ import sys
 import zlib
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-SOURCE = os.path.join(ROOT, "assets", "hookshot.png")
+SOURCE = os.path.join(ROOT, "assets", "longshot.png")
 
 
 def decode(data):

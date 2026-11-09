@@ -233,6 +233,10 @@ void predict_run(void (*progress)(size_t done, size_t total));   // (after a pre
 /// what is done kept (the program cache, the driver's) and not counted as a start that ended inside them
 void prepare_stop();
 bool prepare_stopped();
+/// (longshot) for the start-up screen's diagnostics: variants translated and pipelines compiled before the game, and the
+/// workers of the step running now
+extern std::atomic<size_t> prep_translated_n, prep_compiled_n;
+extern std::atomic<int> prep_workers_n;
 void fill_replay_table(MkwVkRenderer& t);     // vk_replay.cpp
 
 } // namespace mkwvk

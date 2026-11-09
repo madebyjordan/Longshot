@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <algorithm>
 #include <string>
+#include <vector>
 
 namespace mkwvk {
 
@@ -101,6 +102,7 @@ struct StartupView {
     std::string step, title, pct;   // ("STEP 1 OF 2", "Preparing shaders", "32%"); an empty title: the wordmark alone
     std::string left, right;        // (under the bar: "12,345 / 38,809 shaders", "about 40 s left")
     std::string hint;
+    std::vector<std::string> diag;  // (longshot) the diagnostics under the hint: GPU and driver, rate and CPU, what is being made
     double fraction = -1;           // (the bar, 0 to 1; negative: none)
     bool operator==(const StartupView&) const = default;
 };
