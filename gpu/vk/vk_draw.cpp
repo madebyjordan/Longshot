@@ -6165,6 +6165,20 @@ bool prepare_is_update() {
     fclose(f);
     return read && have != program_cache_stamp();
 }
+// (longshot) A compute variant for two or more texture answers that are not the plain one: the prepare translates these
+// combinations (cheap) but compiles none before the game. They were half of the first start's compute pipelines (5095 of
+// 10107, ~13 min of AMD's compiler on a Ryzen 5 5600) and play used 4 of them from new game to the Deku Tree's emerald
+// (448 compute variants used in all). One play asks for compiles on a worker, its dispatches left out meanwhile, as any
+// pipeline still compiling. RX_VK_PREPARE_COMBOS=1: compiled before the game, as before
+static bool compute_combination(const Program& p) {
+    static const bool all = getenv("RX_VK_PREPARE_COMBOS") != nullptr;
+    if (all) return false;
+    int n = 0;
+    for (const Program::Answer& a : p.answers)
+        n += a.image ? a.type != 0 : a.type != (uint8_t)Shader::TextureType::Color2D;
+    return n >= 2;
+}
+
 /// Every shader of the game, before its first start (vk_shader.cpp, the seed): once for this translator. True: prepared now.
 /// background: in play, behind the game: a few workers at idle priority, translation only (the driver's part is left to first use:
 /// its compiler crashing in here would take the game with it)
@@ -6220,7 +6234,7 @@ bool prepare_run(void (*progress)(size_t done, size_t total), bool background) {
     // (hookshot) compute pipelines too, for the driver's own cache: built in play they stopped the game while the driver compiled
     // them, seconds each for the culling programs (53caac5f: 6.5 s, 41 s inlined), which looked like a hang
     const auto warm_compute = [&](Program& p) {
-        if (!warm_cs || taau_key(p.key)) return;
+        if (!warm_cs || taau_key(p.key) || compute_combination(p)) return;
         ensure_layout(p);
         VkComputePipelineCreateInfo ci{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
         ci.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -6355,7 +6369,7 @@ void precompile_run(void (*progress)(size_t done, size_t total)) {
     std::vector<Program*> computes;
     const size_t programs_n = program_cache_load_some(wanted, [&](Program& p) {
         ensure_layout(p);
-        if (p.compute) computes.push_back(&p);
+        if (p.compute && !compute_combination(p)) computes.push_back(&p);
     });
     const double read_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
     const size_t total = notes.size() + computes.size();
