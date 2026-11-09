@@ -3,9 +3,8 @@
 # docs/versioning.md. No game data is involved.
 name: Release
 
+# (Longshot: by hand only. Releases are tagged after the build is played, never from a push; see CHANGELOG.md)
 on:
-  push:
-    branches: [main, next]
   workflow_dispatch:
 
 permissions:
