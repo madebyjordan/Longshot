@@ -66,7 +66,7 @@ class FinishOutputTests(unittest.TestCase):
 
     def finish(self, launcher=False):
         if launcher:
-            (self.root / "HookshotBuilder-Setup.exe").write_bytes(b"new synthetic launcher")
+            (self.root / "LongshotBuilder-Setup.exe").write_bytes(b"new synthetic launcher")
         with mock.patch.object(make_game, "BESIDE", ["hookshot.exe"]):
             # Comprehensions use globals. Keep one namespace, as in production, and discover only authored setup files.
             namespace = dict(make_game.__dict__, built=str(self.built), out=str(self.out), work=str(self.work),
@@ -141,9 +141,10 @@ class FinishOutputTests(unittest.TestCase):
 
         with mock.patch.object(make_game.shutil, "copy2", side_effect=observe_copy):
             self.finish(launcher=True)
-        self.assertEqual(copied, [self.source, self.image, self.root / "HookshotBuilder-Setup.exe"])
+        self.assertEqual(copied, [self.source, self.image, self.root / "LongshotBuilder-Setup.exe"])
         self.assertEqual(binary.read_bytes(), self.source.read_bytes())
-        self.assertEqual(self.destination.read_bytes(), b"new synthetic launcher")
+        self.assertEqual((self.out / "Longshot.exe").read_bytes(), b"new synthetic launcher")
+        self.assertFalse(self.destination.exists())   # (the folder's old hookshot.exe launcher is removed)
         self.assertEqual((self.out / "image.bin").read_bytes(), self.image.read_bytes())
         self.assertEqual(list(self.out.rglob("*.new")), [])
 
@@ -154,7 +155,7 @@ class FinishOutputTests(unittest.TestCase):
         copy = make_game.shutil.copy2
 
         def partial_launcher(source, destination):
-            if Path(source) == self.root / "HookshotBuilder-Setup.exe":
+            if Path(source) == self.root / "LongshotBuilder-Setup.exe":
                 Path(destination).write_bytes(b"partial launcher")
                 raise OSError(errno.ENOSPC, "synthetic disk-full error")
             return copy(source, destination)
@@ -166,7 +167,7 @@ class FinishOutputTests(unittest.TestCase):
         self.assertEqual(binary.read_bytes(), b"existing synthetic game in bin")
         self.assertEqual(binary.with_name("hookshot.exe.new").read_bytes(), self.source.read_bytes())
         self.assertEqual((self.out / "image.bin.new").read_bytes(), self.image.read_bytes())
-        self.assertEqual((self.out / "hookshot.exe.new").read_bytes(), b"partial launcher")
+        self.assertEqual((self.out / "Longshot.exe.new").read_bytes(), b"partial launcher")
 
     def test_partial_executable_copy_preserves_both_installed_files(self):
         def partial_copy(source, destination):

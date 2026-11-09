@@ -11,7 +11,7 @@ namespace HookshotBuilder;
 /// game uses, and its copy of the game files (.hookshot_exefs) is what updates build from
 static class Storage
 {
-    public static string Base => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HookshotBuilder");
+    public static string Base => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LongshotBuilder");
 
     /// About what a build leaves in the build files folder (the translated code and its compiled objects): said before the build
     public const long BuildFilesBytes = 4L << 30;
@@ -38,7 +38,7 @@ static class Storage
     public static void MoveWork(string? picked)
     {
         var old = Work;
-        var to = picked == null ? Base : Path.Combine(picked, "Hookshot build files");
+        var to = picked == null ? Base : Path.Combine(picked, "Longshot build files");
         if (Same(old, to)) return;
         Directory.CreateDirectory(to);
         Directory.CreateDirectory(Base);

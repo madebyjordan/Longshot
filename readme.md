@@ -35,8 +35,12 @@ Differences from Hookshot v2.0.5 so far:
 
 ## Build
 
-The same as Hookshot v2.0.5: see [Build from source](docs/hookshot-readme.md#build-from-source). The builder, launcher
-and game files still use the Hookshot name for now.
+The same as Hookshot v2.0.5: see [Build from source](docs/hookshot-readme.md#build-from-source). The builder is
+**Longshot Builder** and the game folder's launcher is **Longshot.exe**; both check Longshot's releases for updates. The
+files inside the game folder keep Hookshot's names (`bin\hookshot.exe`, `hookshot_options.ini`), so a Hookshot
+folder's settings carry over.
+
+Longshot Builder has no download yet: build it from `builder/` (see `.github/workflows/windows-builder.yml`).
 
 ## Credits
 

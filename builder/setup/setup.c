@@ -9,7 +9,7 @@
        tag <tag>
        part <sha256> <bytes> <folder under the install> <top folder in the zip to rename, or -> <new name, or -> <url>
        run <the builder, relative to the install>
-   Build: clang -O2 -mwindows -municode setup.c setup_rc.o -lwinhttp -lbcrypt -lcomctl32 -lshell32 -lole32 -o HookshotBuilder-Setup.exe */
+   Build: clang -O2 -mwindows -municode setup.c setup_rc.o -lwinhttp -lbcrypt -lcomctl32 -lshell32 -lole32 -o LongshotBuilder-Setup.exe */
 #define WIN32_LEAN_AND_MEAN
 #ifndef UNICODE
 #define UNICODE
@@ -55,7 +55,7 @@ static void fail(const wchar_t *fmt, ...) {
     va_start(ap, fmt);
     vswprintf(msg, 1024, fmt, ap);
     va_end(ap);
-    MessageBoxW(g_win, msg, L"Hookshot Builder setup", MB_OK | MB_ICONERROR);
+    MessageBoxW(g_win, msg, L"Longshot Builder setup", MB_OK | MB_ICONERROR);
     PostMessageW(g_win, WM_DONE, 1, 0);
     ExitThread(1);
 }
@@ -71,8 +71,8 @@ static int http_get(const char *url8, Sink sink, void *user, unsigned long long 
     uc.lpszHostName = host, uc.dwHostNameLength = 256;
     uc.lpszUrlPath = path, uc.dwUrlPathLength = 1024;
     if (!WinHttpCrackUrl(url, 0, 0, &uc)) return 0;
-    HINTERNET s = WinHttpOpen(L"HookshotBuilder-Setup/1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, NULL, NULL, 0);
-    if (!s) s = WinHttpOpen(L"HookshotBuilder-Setup/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, NULL, NULL, 0);
+    HINTERNET s = WinHttpOpen(L"LongshotBuilder-Setup/1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, NULL, NULL, 0);
+    if (!s) s = WinHttpOpen(L"LongshotBuilder-Setup/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, NULL, NULL, 0);
     if (!s) return 0;
     /* (a stalled download fails after a minute without data, with the message, instead of waiting forever: a GitHub 504 hour) */
     WinHttpSetTimeouts(s, 30000, 30000, 30000, 60000);
@@ -343,7 +343,7 @@ static int retryable(DWORD status) {
 static const char *manifest_url(void) {
     static char u[1024];
     const char *e = getenv("HOOKSHOT_SETUP_LIST");
-    snprintf(u, sizeof u, "%s", e && *e ? e : "https://github.com/NotRexed/Hookshot/releases/latest/download/hookshot-setup.txt");
+    snprintf(u, sizeof u, "%s", e && *e ? e : "https://github.com/madebyjordan/longshot/releases/latest/download/hookshot-setup.txt");
     return u;
 }
 
@@ -360,11 +360,11 @@ static DWORD WINAPI work(LPVOID unused) {
     }
     wchar_t base[MAX_PATH], downloads[MAX_PATH];
     if (SHGetFolderPathW(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, base) != S_OK) fail(L"No local application data folder.");
-    wcscat(base, L"\\HookshotBuilder");
+    wcscat(base, L"\\LongshotBuilder");
     swprintf(downloads, MAX_PATH, L"%ls\\downloads", base);
     mkdirs(downloads);
 
-    status(L"Looking for the latest Hookshot Builder...");
+    status(L"Looking for the latest Longshot Builder...");
     Mem man = {0};
     /* (tried again on a server error or no answer: GitHub's release downloads answered 504 for an hour, 2026-11-08, and every
        start failed at once) */
@@ -377,7 +377,7 @@ static DWORD WINAPI work(LPVOID unused) {
         if (attempt) {
             status(L"GitHub didn't answer (%lu). Trying again in %d s...", g_http_status, waits[attempt - 1]);
             Sleep(waits[attempt - 1] * 1000);
-            status(L"Looking for the latest Hookshot Builder...");
+            status(L"Looking for the latest Longshot Builder...");
         }
         free(man.p);
         man = (Mem){0};
@@ -395,11 +395,11 @@ static DWORD WINAPI work(LPVOID unused) {
     }
     if (!ok)
         fail(g_http_status == 404
-                 ? L"The latest Hookshot release has no setup files yet. Download HookshotBuilder.zip from the releases page for now: "
-                   L"https://github.com/NotRexed/Hookshot/releases/latest"
+                 ? L"The latest Longshot release has no setup files yet. Download LongshotBuilder.zip from the releases page for now: "
+                   L"https://github.com/madebyjordan/longshot/releases/latest"
              : g_http_status ? L"GitHub's download servers are failing right now (an error 500 or above, tried 8 times over 3 minutes). "
                                L"This is on GitHub's side: try again in a few minutes, or later today."
-                             : L"Could not reach GitHub to get the Hookshot Builder. Check your internet connection and try again.");
+                             : L"Could not reach GitHub to get the Longshot Builder. Check your internet connection and try again.");
 
     char tag[128] = "", run[260] = "";
     Part parts[MAX_PARTS];
@@ -471,7 +471,7 @@ static DWORD WINAPI work(LPVOID unused) {
                 }
                 if (!got) DeleteFileW(part), fail(retryable(g_http_status)
                     ? L"Downloading part %d of %d failed: GitHub's download servers are failing right now (tried 8 times over 3 "
-                      L"minutes). This is on GitHub's side. The parts already downloaded are kept: run HookshotBuilder.exe again in a "
+                      L"minutes). This is on GitHub's side. The parts already downloaded are kept: run LongshotBuilder.exe again in a "
                       L"few minutes and it carries on from here."
                     : L"Downloading part %d of %d failed. Check your connection and free space, then try again.", i + 1, nparts);
                 if (strcmp(have, p->sha)) DeleteFileW(part), fail(L"Part %d of %d did not download correctly (its checksum differs). Try again.", i + 1, nparts);
@@ -508,7 +508,7 @@ static DWORD WINAPI work(LPVOID unused) {
     }
     prune(versions, downloads, tag, parts, nparts);
 
-    status(L"Starting the Hookshot Builder...");
+    status(L"Starting the Longshot Builder...");
     wchar_t cmd[4096], dir[MAX_PATH];
     wcscpy(dir, exe);
     wchar_t *slash = wcsrchr(dir, L'\\');
@@ -537,20 +537,20 @@ static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(h, msg, wp, lp);
 }
 
-/* (launch mode) "Hookshot Launcher.exe" in a game folder (nx2/make_game.py puts this file there under that name): the installed
+/* (launch mode) Longshot.exe in a game folder (nx2/make_game.py puts this file there under that name): the installed
    builder opened as the game's launcher (--launch <that folder>: Play, and Update when a newer release is out), at once, with no
    window, download or network of its own. With no builder installed yet, the setup runs as usual and then opens the launcher. */
 static int launch_installed(const wchar_t *args) {
     wchar_t base[MAX_PATH], cur[MAX_PATH], exe[MAX_PATH], dir[MAX_PATH], cmd[4096];
     if (SHGetFolderPathW(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, base) != S_OK) return 0;
     char tag[128] = "";
-    swprintf(cur, MAX_PATH, L"%ls\\HookshotBuilder\\versions\\current.txt", base);
+    swprintf(cur, MAX_PATH, L"%ls\\LongshotBuilder\\versions\\current.txt", base);
     read_small(cur, tag, sizeof tag);
     if (!tag[0]) return 0;
     wchar_t wtag[128];
     MultiByteToWideChar(CP_UTF8, 0, tag, -1, wtag, 128);
-    swprintf(dir, MAX_PATH, L"%ls\\HookshotBuilder\\versions\\%ls\\HookshotBuilder", base, wtag);
-    swprintf(exe, MAX_PATH, L"%ls\\HookshotBuilder.exe", dir);
+    swprintf(dir, MAX_PATH, L"%ls\\LongshotBuilder\\versions\\%ls\\HookshotBuilder", base, wtag);
+    swprintf(exe, MAX_PATH, L"%ls\\LongshotBuilder.exe", dir);
     if (GetFileAttributesW(exe) == INVALID_FILE_ATTRIBUTES) return 0;
     swprintf(cmd, 4096, L"\"%ls\" %ls", exe, args);
     STARTUPINFOW si = {sizeof si};
@@ -568,7 +568,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE prev, LPWSTR cmdline, int show) {
         GetModuleFileNameW(NULL, self, MAX_PATH);
         const wchar_t *name = wcsrchr(self, L'\\');
         name = name ? name + 1 : self;
-        if (!_wcsicmp(name, L"hookshot.exe") && !wcsstr(g_cmdline, L"--")) {   /* (the game folder's launcher) */
+        if ((!_wcsicmp(name, L"longshot.exe") || !_wcsicmp(name, L"hookshot.exe")) && !wcsstr(g_cmdline, L"--")) {   /* (the game folder's launcher) */
             wchar_t *slash = wcsrchr(self, L'\\');
             if (slash) *slash = 0;
             swprintf(g_cmdline, 2047, L"--launch \"%ls\"", self);
@@ -583,7 +583,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE prev, LPWSTR cmdline, int show) {
                 CloseHandle(pi.hThread), CloseHandle(pi.hProcess);
                 return 0;
             }
-            MessageBoxW(NULL, L"The game (bin\\hookshot.exe) is missing from this folder. Build it again with the Hookshot Builder.", L"Hookshot",
+            MessageBoxW(NULL, L"The game (bin\\hookshot.exe) is missing from this folder. Build it again with the Longshot Builder.", L"Longshot",
                         MB_ICONERROR);
             return 1;
         }
@@ -592,13 +592,13 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE prev, LPWSTR cmdline, int show) {
     INITCOMMONCONTROLSEX icc = {sizeof icc, ICC_PROGRESS_CLASS};
     InitCommonControlsEx(&icc);
     WNDCLASSW wc = {0};
-    wc.lpfnWndProc = wndproc, wc.hInstance = inst, wc.lpszClassName = L"HookshotSetup";
+    wc.lpfnWndProc = wndproc, wc.hInstance = inst, wc.lpszClassName = L"LongshotSetup";
     wc.hIcon = LoadIconW(inst, MAKEINTRESOURCEW(1));
     wc.hCursor = LoadCursorW(NULL, (LPCWSTR)IDC_ARROW);
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     RegisterClassW(&wc);
     const int ww = 460, wh = 140;
-    g_win = CreateWindowW(L"HookshotSetup", L"Hookshot Builder setup", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+    g_win = CreateWindowW(L"LongshotSetup", L"Longshot Builder setup", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
                           (GetSystemMetrics(SM_CXSCREEN) - ww) / 2, (GetSystemMetrics(SM_CYSCREEN) - wh) / 2, ww, wh, NULL, NULL, inst, NULL);
     g_text = CreateWindowW(L"STATIC", L"Starting...", WS_CHILD | WS_VISIBLE, 16, 16, ww - 48, 22, g_win, NULL, inst, NULL);
     g_bar = CreateWindowW(PROGRESS_CLASSW, NULL, WS_CHILD | WS_VISIBLE | PBS_MARQUEE, 16, 48, ww - 48, 20, g_win, NULL, inst, NULL);

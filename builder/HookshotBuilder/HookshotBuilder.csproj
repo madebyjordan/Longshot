@@ -6,13 +6,13 @@
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>HookshotBuilder</AssemblyName>
+    <AssemblyName>LongshotBuilder</AssemblyName>
     <RootNamespace>HookshotBuilder</RootNamespace>
     <Version>0.1.0</Version>
-    <Product>Hookshot Builder</Product>
+    <Product>Longshot Builder</Product>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
-    <ApplicationIcon Condition="Exists('..\..\work\hookshot.ico')">..\..\work\hookshot.ico</ApplicationIcon>
+    <ApplicationIcon>..\setup\longshot.ico</ApplicationIcon>
   </PropertyGroup>
 
   <!-- Needs nothing installed: dotnet publish -c Release. A folder (the app and .NET's own signed files), not one compressed exe:
@@ -27,7 +27,7 @@
   <!-- Inter (SIL Open Font License, Fonts/Inter-LICENSE.txt) and the hookshot, inside the app -->
   <ItemGroup>
     <Resource Include="Fonts\*.ttf" />
-    <Resource Include="Images\hookshot.png" />
+    <Resource Include="Images\longshot.png" />
     <None Include="Fonts\Inter-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

@@ -66,18 +66,18 @@ def main():
     p.add_argument("--reuse", help="an earlier hookshot-setup.txt: the parts the package has no folder for, from it")
     a = p.parse_args()
     root = os.path.abspath(a.package)
-    if not os.path.isfile(os.path.join(root, "HookshotBuilder.exe")):
-        sys.exit("not a Hookshot Builder package folder: %s" % root)
+    if not os.path.isfile(os.path.join(root, "LongshotBuilder.exe")):
+        sys.exit("not a Longshot Builder package folder: %s" % root)
     # (the parts live in one release of their own, named by their checksum: a part that did not change is not uploaded again, and a
     # release itself holds only HookshotBuilder.exe (the setup) and the list it reads)
-    base = (a.base or "https://github.com/NotRexed/Hookshot/releases/download/builder-parts").rstrip("/")
+    base = (a.base or "https://github.com/madebyjordan/longshot/releases/download/builder-parts").rstrip("/")
     os.makedirs(a.out, exist_ok=True)
     with open(os.path.join(root, "tools", "version.txt"), "w", newline="\n") as f:
         f.write(a.tag + "\n")
 
     top = sorted(os.listdir(root))
     builder_files = [n for n in top if os.path.isfile(os.path.join(root, n)) and
-                     (n.startswith("HookshotBuilder") or n in ("LICENSE", "README.txt"))]   # (HookshotBuilder-Setup.exe too: Repair runs it)
+                     (n.startswith(("HookshotBuilder", "LongshotBuilder")) or n in ("LICENSE", "README.txt"))]   # (HookshotBuilder-Setup.exe too: Repair runs it)
     runtime_files = [n for n in top if os.path.isfile(os.path.join(root, n)) and n not in builder_files]
     runtime_dirs = [n for n in top if os.path.isdir(os.path.join(root, n)) and n != "tools"]
     tools = sorted(os.listdir(os.path.join(root, "tools")))
@@ -113,7 +113,7 @@ def main():
         lines.append("part %s %d . - - %s/%s" % (sha, size, base, os.path.basename(zp)))
         print("%-12s %5d files %5d MB  %s" % (name, len(parts[name]), size >> 20, sha[:16]), flush=True)
     lines.append("part %s %d HookshotBuilder/tools %s llvm-mingw %s" % LLVM)
-    lines.append("run HookshotBuilder/HookshotBuilder.exe")
+    lines.append("run HookshotBuilder/LongshotBuilder.exe")
     with open(os.path.join(a.out, "hookshot-setup.txt"), "w", newline="\n") as f:
         f.write("\n".join(lines) + "\n")
 

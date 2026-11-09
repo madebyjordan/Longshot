@@ -16,10 +16,15 @@ Based on Hookshot v2.0.5 (`232eecb`).
 ### Changes
 - Releases are made by hand after the build is played: the release workflow no longer runs on every push, and the
   Linux AppImage is not published.
+- Longshot's own name and updates: the game folder's launcher is **Longshot.exe**, the game window says Longshot, and
+  **Longshot Builder** (in `%LOCALAPPDATA%\LongshotBuilder`) replaces Hookshot Builder. The builder, the launcher and the
+  game check Longshot's releases for updates, not Hookshot's. A folder's old `hookshot.exe` launcher (which opened
+  Hookshot Builder) is removed when the folder is built again. The files inside keep their names (`bin\hookshot.exe`,
+  `hookshot_options.ini`, `hookshot_env.txt`, the shader caches), so settings and caches carry over.
 
 ### Known issues
-- The launcher's **Update** button and the builder still update from Hookshot's releases, not Longshot's. Don't use
-  them on a Longshot build.
+- Longshot Builder has no download yet: its setup needs Longshot's own copy of the build tools on GitHub. Build from
+  source for now.
 
 ### Kept from Hookshot v2.0.5
 - AMD: terrain textures re-encoded at sizes whose BC levels halve evenly (no grid lines in Hyrule Field). Hookshot

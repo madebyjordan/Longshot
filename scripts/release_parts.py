@@ -179,7 +179,7 @@ def package(a):
     if os.path.exists(out):
         shutil.rmtree(out)
     shutil.copytree(a.publish, out)
-    copy(a.setup, os.path.join(out, "HookshotBuilder-Setup.exe"))   # (the builder's Repair runs it)
+    copy(a.setup, os.path.join(out, "LongshotBuilder-Setup.exe"))   # (the builder's Repair runs it)
     copy(os.path.join(ROOT, "LICENSE"), os.path.join(out, "LICENSE"))
     tools = os.path.join(out, "tools")
     for f in tracked("gpu", "host", "nx2", "scripts", "third_party"):

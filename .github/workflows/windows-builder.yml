@@ -1,4 +1,4 @@
-# What a Windows player downloads, made without game data: HookshotBuilder-Setup.exe (builder/setup/setup.c, with
+# What a Windows player downloads, made without game data: LongshotBuilder-Setup.exe (builder/setup/setup.c, with
 # llvm-mingw) and the Hookshot Builder package (dotnet publish, versioned from the tag as docs/versioning.md says), split
 # into the parts the setup downloads by scripts/make_setup_parts.py. The Python, emsdk, CPM and wgpu-native parts, and the
 # third_party part's prebuilt files, are the latest release's (scripts/release_parts.py). The Windows Vulkan back end is
@@ -91,13 +91,13 @@ jobs:
         if: env.PREVIOUS != ''
         run: python -I scripts/release_parts.py profile "$PREVIOUS" work
 
-      - name: HookshotBuilder-Setup.exe
+      - name: LongshotBuilder-Setup.exe
         working-directory: builder/setup
         run: |
           "$LLVM_MINGW/bin/x86_64-w64-mingw32-windres" setup.rc -O coff -o "$RUNNER_TEMP/setup_rc.o"
           "$LLVM_MINGW/bin/x86_64-w64-mingw32-clang" -O2 -mwindows -municode setup.c "$RUNNER_TEMP/setup_rc.o" \
-            -lwinhttp -lbcrypt -lcomctl32 -lshell32 -lole32 -o "$RUNNER_TEMP/HookshotBuilder-Setup.exe"
-          ls -l "$RUNNER_TEMP/HookshotBuilder-Setup.exe"
+            -lwinhttp -lbcrypt -lcomctl32 -lshell32 -lole32 -o "$RUNNER_TEMP/LongshotBuilder-Setup.exe"
+          ls -l "$RUNNER_TEMP/LongshotBuilder-Setup.exe"
 
       - name: Hookshot Builder
         run: >-
@@ -107,14 +107,14 @@ jobs:
       - name: Package folder
         run: >-
           python -I scripts/release_parts.py package "$RUNNER_TEMP/package"
-          --publish "$RUNNER_TEMP/publish" --setup "$RUNNER_TEMP/HookshotBuilder-Setup.exe" ${PREVIOUS:+--list "$PREVIOUS"}
+          --publish "$RUNNER_TEMP/publish" --setup "$RUNNER_TEMP/LongshotBuilder-Setup.exe" ${PREVIOUS:+--list "$PREVIOUS"}
 
       - name: Setup parts
         run: |
           python -I scripts/make_setup_parts.py "$RUNNER_TEMP/package" "$TAG" dist \
             --base "https://github.com/$GITHUB_REPOSITORY/releases/download/builder-parts" ${PREVIOUS:+--reuse "$PREVIOUS"}
           # (a release holds the setup as HookshotBuilder.exe: builder/HookshotBuilder/Updater.cs)
-          cp "$RUNNER_TEMP/HookshotBuilder-Setup.exe" dist/HookshotBuilder.exe
+          cp "$RUNNER_TEMP/LongshotBuilder-Setup.exe" dist/LongshotBuilder.exe
           cat dist/hookshot-setup.txt
           ls -l dist
 
@@ -212,7 +212,7 @@ jobs:
         run: |
           if ! gh release view builder-parts >/dev/null 2>&1; then
             gh release create builder-parts --prerelease --latest=false --target "$GITHUB_SHA" --title builder-parts \
-              --notes "The parts HookshotBuilder-Setup.exe downloads, named by each release's hookshot-setup.txt."
+              --notes "The parts LongshotBuilder-Setup.exe downloads, named by each release's hookshot-setup.txt."
           fi
           have=$(gh release view builder-parts --json assets --jq '.assets[].name')
           for f in dist/HookshotBuilder-*.zip; do
@@ -223,4 +223,4 @@ jobs:
             fi
           done
       - name: Setup and its list to the release
-        run: scripts/release_upload.sh "$GITHUB_REF_NAME" dist/HookshotBuilder.exe dist/hookshot-setup.txt
+        run: scripts/release_upload.sh "$GITHUB_REF_NAME" dist/LongshotBuilder.exe dist/hookshot-setup.txt

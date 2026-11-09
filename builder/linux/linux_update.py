@@ -20,8 +20,8 @@ import urllib.request
 import zipfile
 
 LIST_NAME = "hookshot-linux.txt"
-LATEST_LIST = "https://github.com/NotRexed/Hookshot/releases/latest/download/" + LIST_NAME
-LATEST_API = "https://api.github.com/repos/NotRexed/Hookshot/releases/latest"
+LATEST_LIST = "https://github.com/madebyjordan/longshot/releases/latest/download/" + LIST_NAME
+LATEST_API = "https://api.github.com/repos/madebyjordan/longshot/releases/latest"
 
 
 class Part(object):
@@ -161,7 +161,7 @@ def game_exe(folder):
 
 
 def _request(url, timeout):
-    req = urllib.request.Request(url, headers={"User-Agent": "Hookshot", "Accept": "application/vnd.github+json"})
+    req = urllib.request.Request(url, headers={"User-Agent": "Longshot", "Accept": "application/vnd.github+json"})
     with urllib.request.urlopen(req, timeout=timeout) as response:
         return response.read()
 
@@ -181,7 +181,7 @@ def _api_download(url):
     for asset in json.loads(info.decode("utf-8")).get("assets", []):
         if asset.get("name") == name:
             req = urllib.request.Request(asset["url"], headers={
-                "User-Agent": "Hookshot", "Accept": "application/octet-stream"})
+                "User-Agent": "Longshot", "Accept": "application/octet-stream"})
             with urllib.request.urlopen(req, timeout=120) as response:
                 return response.read()
     return None

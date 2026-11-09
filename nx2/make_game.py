@@ -45,6 +45,8 @@ LINUX, CROSS = not _toolchain.windows(), _toolchain.windows() and os.name != "nt
 # (SDL2.dll is sdl2-compat: it loads SDL3.dll from beside the exe. Left out of bin\ since v2.0.0, it said "Failed loading SDL3
 # library" three times and no controller worked: Discord #bug-reporting, 11-08)
 BESIDE = ["hookshot", "hookshot_vk.so", "libSDL2-2.0.so.0"] if LINUX else ["hookshot.exe", "hookshot_vk.dll", "SDL2.dll", "SDL3.dll", "wgpu_native.dll"]
+# (the launcher's name in the game folder: what the player starts. The game itself stays bin\hookshot.exe)
+LAUNCHER = "hookshot" if LINUX else "Longshot.exe"
 LANGUAGES = [("en-US", "English (US)"), ("en-GB", "English (UK)"), ("fr", "French (France)"), ("fr-CA", "French (Canada)"), ("de", "German"),
              ("it", "Italian"), ("es", "Spanish (Spain)"), ("es-419", "Spanish (Latin America)"), ("pt-BR", "Portuguese (Brazil)"), ("nl", "Dutch"),
              ("pl", "Polish"), ("ru", "Russian"), ("ja", "Japanese"), ("ko", "Korean"), ("zh-Hans", "Chinese (Simplified)"),
@@ -239,13 +241,13 @@ def check_modules(exefs):
                 head = f.read(16)
             if head[:4] != b"NSO0":
                 fail("The file %s in this dump is not a game module (it starts %s). Try another dump of the game, or send this message to the "
-                     "Hookshot developers." % (name, head.hex()))
+                     "Longshot developers." % (name, head.hex()))
 
 
 def check_supported_build(exefs):
     bid = build_id(os.path.join(exefs, "main"))
     if not bid.startswith(BUILD_ID):
-        fail("This is build %s. Hookshot supports build %s." % (bid[:8], BUILD_ID))
+        fail("This is build %s. Longshot supports build %s." % (bid[:8], BUILD_ID))
 
 
 def check_cache_paths(out, paths):
@@ -274,7 +276,7 @@ def check_cpu():
     from host_cpu import host_march
     m = host_march()
     if m != "x86-64-v3":
-        fail("Your processor has no AVX2 (it runs %s), and the AppImage's renderer needs it. Build Hookshot from source "
+        fail("Your processor has no AVX2 (it runs %s), and the AppImage's renderer needs it. Build Longshot from source "
              "instead (see the readme): a source build follows your processor." % m)
 
 
@@ -291,9 +293,9 @@ def check(a, work):
     else:
         bid = build_id(os.path.join(a.exefs, "main"))
     if bid.startswith(BUILD_ID):
-        say("check", "ok", "This is the version Hookshot supports (build %s)." % bid[:8])
+        say("check", "ok", "This is the version Longshot supports (build %s)." % bid[:8])
     else:
-        say("check", "bad", "This is build %s. Hookshot supports build %s." % (bid[:8], BUILD_ID))
+        say("check", "bad", "This is build %s. Longshot supports build %s." % (bid[:8], BUILD_ID))
 
 
 def visual_studio_environment():
@@ -396,7 +398,7 @@ def check_linux_compiler():
     import toolchain
     cc = toolchain.find("clang")
     if not os.path.isfile(cc):
-        fail("No C compiler was found. Install clang (and lld), or use the Hookshot AppImage, which brings its own.")
+        fail("No C compiler was found. Install clang (and lld), or use the Longshot AppImage, which brings its own.")
     sysroot = os.environ.get("HOOKSHOT_SYSROOT")
     with tempfile.TemporaryDirectory() as d:
         src = os.path.join(d, "t.c")
@@ -459,8 +461,8 @@ def bundled_mingw():
             missing = [n for n in ("clang.exe", "clang++.exe", "ld.lld.exe")
                        if not os.path.isfile(os.path.join(here, "bin", n))]
             fail("Files of the builder's own compiler are missing (%s in %s). Your antivirus most likely removed them "
-                 "(a false alarm on unsigned programs): restore them from its quarantine or allow the Hookshot Builder folder, "
-                 "then unzip HookshotBuilder.zip again and build. Visual Studio is not needed."
+                 "(a false alarm on unsigned programs): restore them from its quarantine or allow the Longshot Builder folder, "
+                 "then unzip LongshotBuilder.zip again and build. Visual Studio is not needed."
                  % (", ".join(missing) or "bin", os.path.join(here, "bin")))
     return os.environ.get("HOOKSHOT_MINGW", "")
 
@@ -472,7 +474,7 @@ def check_mingw():
     cc = toolchain.find("clang")   # (HOOKSHOT_MINGW's, else the one toolchain.py finds: the same as the build uses)
     if not os.path.isfile(cc):   # (HOOKSHOT_MINGW set to a folder without the compiler: said here, not as a silent SystemExit)
         fail("The builder's own compiler was not found at %s. Set HOOKSHOT_MINGW to an llvm-mingw folder, or unpack the "
-             "Hookshot Builder zip again into a folder your antivirus allows." % cc)
+             "Longshot Builder zip again into a folder your antivirus allows." % cc)
     with tempfile.TemporaryDirectory() as d:
         src = os.path.join(d, "t.c")
         with open(src, "w") as f:
@@ -838,7 +840,7 @@ def parse_args():
     p.add_argument("--out")
     p.add_argument("--work", default=os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"),
                                                   "hookshot-builder-windows" if CROSS else "hookshot-builder")   # (the objects apart)
-                   if os.name != "nt" else os.path.join(os.environ.get("LOCALAPPDATA", ROOT), "HookshotBuilder"))
+                   if os.name != "nt" else os.path.join(os.environ.get("LOCALAPPDATA", ROOT), "LongshotBuilder"))
     # (HOOKSHOT_JOBS: fewer compilers on a PC short of memory; the AppImage's builds pass no --jobs)
     p.add_argument("--jobs", type=int)
     p.add_argument("--language", default="en-US", help="the game's language: a code from LANGUAGES, written to language.txt")
@@ -887,7 +889,7 @@ def main(a=None):
     if a.update:
         if not os.path.isdir(kept) or not os.path.isdir(romfs):
             fail("This game folder has no copy of the game files to update from: it was built before updates came in. Choose your game files "
-                 "in Hookshot Builder and build into the same folder once; updates after that work by themselves.")
+                 "in Longshot Builder and build into the same folder once; updates after that work by themselves.")
         check_cache_paths(out, (kept, romfs))
         shutil.copytree(kept, exefs)
         check_modules(exefs)
@@ -1030,7 +1032,7 @@ def main(a=None):
     staged = []
     # (Linux) the same launcher, as a script, when this is a packaged builder (the AppImage sets HOOKSHOT_TOOLS). A source
     # checkout leaves hookshot in the folder, as a development build on Windows does when the setup exe is not beside it
-    launcher = os.path.join(os.path.dirname(os.path.abspath(ROOT)), "HookshotBuilder-Setup.exe")
+    launcher = os.path.join(os.path.dirname(os.path.abspath(ROOT)), "LongshotBuilder-Setup.exe")
     if LINUX:
         script = os.path.join(ROOT, "builder", "linux", "hookshot-folder")
         launcher = script if os.environ.get("HOOKSHOT_TOOLS") and os.path.isfile(script) else None
@@ -1045,7 +1047,7 @@ def main(a=None):
             staged.append((src, os.path.join(game_dir, n)))
     staged.append((os.path.join(work, "sa", "image", "image.bin"), os.path.join(out, "image.bin")))
     if launcher:
-        staged.append((launcher, os.path.join(out, BESIDE[0])))
+        staged.append((launcher, os.path.join(out, LAUNCHER)))
     for src, dst in staged:
         try:
             if os.path.exists(dst + ".new"):
@@ -1059,11 +1061,12 @@ def main(a=None):
         try:
             os.replace(dst + ".new", dst)   # (linux: a running copy keeps its own file; windows: a running exe cannot be replaced)
         except PermissionError:
-            fail("Could not replace %s. Close any running copy of Hookshot and check that the file and folder are writable, then retry. "
+            fail("Could not replace %s. Close any running copy of Longshot and check that the file and folder are writable, then retry. "
                  "Staged replacements remain beside the installed files; the compiled source remains at %s." % (dst, src))
     if launcher:   # (a folder built before the launcher: its libraries left the folder for bin\; hookshot is the launcher now)
         stale = [] if LINUX else sorted(f for f in os.listdir(out) if f.endswith(".dll") and f.startswith(("av", "sw")))
-        for n in BESIDE[1:] + stale + ["hookshot.map", "hookshot-game.exe"]:
+        # (Windows: hookshot.exe in the folder is a launcher from before Longshot.exe, Hookshot's, which opens Hookshot's builder)
+        for n in BESIDE[1:] + stale + ["hookshot.map", "hookshot-game.exe"] + ([] if LINUX else ["hookshot.exe"]):
             try:
                 if os.path.isfile(os.path.join(out, n)):
                     os.remove(os.path.join(out, n))
@@ -1133,7 +1136,7 @@ def cli():
             import traceback
             print(traceback.format_exc(), flush=True)
             say("error", "The builder stopped on an error it did not expect: %s: %s. Please send the text under Show details to the "
-                "Hookshot issues page." % (type(e).__name__, str(e)[:300]))
+                "Longshot issues page." % (type(e).__name__, str(e)[:300]))
             sys.exit(1)
 
 
