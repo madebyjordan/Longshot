@@ -133,7 +133,7 @@ inline StartupView startup_view(const StartupState& s) {
     const bool pipelines = s.stage > 0;
     if (s.prepared) v.step = pipelines ? "STEP 2 OF 2" : "STEP 1 OF 2";
     v.title = !pipelines ? "Preparing shaders" : s.prepared ? "Building pipelines" : "Loading pipelines";
-    if (s.prepared) v.hint = "This happens once after an update. Closing the window keeps what is done.";
+    if (s.prepared) v.hint = "This happens once after an install or update. Closing the window keeps what is done.";
     if (!s.total) {
         v.left = !pipelines ? "Reading the game's shaders" : s.stage == 1 ? "Reading the pipeline notes" : "Loading the shader cache";
         return v;
