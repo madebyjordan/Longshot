@@ -15,7 +15,11 @@ namespace {
 
 std::mutex mu;
 std::condition_variable work_cv, done_cv;
-std::deque<std::function<void()>> queue;
+struct Job {
+    std::function<void()> fn;
+    const void* flag = nullptr;   // (jobs_push_for's: what jobs_wait looks for)
+};
+std::deque<Job> queue;
 std::atomic<int> pending{0};
 bool started = false;
 
@@ -27,7 +31,7 @@ void worker() {
         {
             std::unique_lock lk(mu);
             work_cv.wait(lk, [] { return !queue.empty(); });
-            fn = std::move(queue.front());
+            fn = std::move(queue.front().fn);
             queue.pop_front();
         }
         fn();
@@ -49,8 +53,15 @@ void jobs_push(std::function<void()> fn, bool urgent) {
     std::lock_guard lk(mu);
     if (!started) start();
     pending++;
-    if (urgent) queue.push_front(std::move(fn));
-    else queue.push_back(std::move(fn));
+    if (urgent) queue.push_front({std::move(fn)});
+    else queue.push_back({std::move(fn)});
+    work_cv.notify_one();
+}
+void jobs_push_for(const std::atomic<bool>& flag, std::function<void()> fn) {
+    std::lock_guard lk(mu);
+    if (!started) start();
+    pending++;
+    queue.push_back({std::move(fn), &flag});
     work_cv.notify_one();
 }
 // (issue 496) Intel A750: four of the game's big compute pipelines built at once by Intel's compiler (up to 58 s each) froze
@@ -87,8 +98,24 @@ void jobs_notify() {
     std::lock_guard lk(mu);
     done_cv.notify_all();
 }
+// (longshot) A job waited for that no worker has taken yet is run here, now: the queue is first come, first served, and on a
+// first start (no pipelines built before the game, AMD's driver cache empty) a draw that must wait for its pipeline waited
+// for every pipeline queued before it: freezes of 5 to 27 s from new game to the Deku Tree (RX 6700 XT, Ryzen 5 5600).
+// Now it waits for its own build only. A job a worker has begun is waited for, as before
 void jobs_wait(const std::atomic<bool>& flag) {
     std::unique_lock lk(mu);
+    if (flag.load(std::memory_order_acquire)) return;
+    for (auto it = queue.begin(); it != queue.end(); ++it)
+        if (it->flag == &flag) {
+            std::function<void()> fn = std::move(it->fn);
+            queue.erase(it);
+            lk.unlock();
+            fn();
+            pending--;
+            jobs_notify();
+            lk.lock();
+            break;
+        }
     done_cv.wait(lk, [&] { return flag.load(std::memory_order_acquire); });
 }
 int jobs_pending() {

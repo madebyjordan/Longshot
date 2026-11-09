@@ -1033,7 +1033,7 @@ PipeEntry* graphics_pipeline(const Program& p, const NvnState& s, const Targets&
     };
     auto job = std::make_shared<Job>();
     job->e = e, job->p = &p, job->s = s, job->at = at, job->topo = topo;
-    jobs_push([job] {
+    jobs_push_for(e->ready, [job] {
         // (over a linked one, which is left alone: draws recorded with it may still be on their way)
         if (const VkPipeline full = build_graphics(*job->p, job->s, job->at, job->topo)) job->e->pipeline = full;
         job->e->ready.store(true, std::memory_order_release);

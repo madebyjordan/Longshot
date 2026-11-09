@@ -10,6 +10,8 @@ namespace mkwvk {
 
 /// Queues fn for a worker (urgent: ahead of the others, for work a draw waits on)
 void jobs_push(std::function<void()> fn, bool urgent = false);
+/// (longshot) As jobs_push, for the job that sets flag: one that jobs_wait(flag) finds still queued is run there and then
+void jobs_push_for(const std::atomic<bool>& flag, std::function<void()> fn);
 /// Queues fn for the one thread that runs such jobs one at a time, in order
 void jobs_push_serial(std::function<void()> fn);
 /// Waits until flag is set by a job (which calls jobs_notify after setting it)
