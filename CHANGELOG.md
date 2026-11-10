@@ -16,6 +16,10 @@ Based on Hookshot v2.0.5 (`232eecb`).
   VRAM limit while 4 GB sat free inside the memory blocks. Image blocks are smaller, and the budget is cut only by what
   that free space cannot take. With Hookshot #887 by milal (8 GB cards kept inside the VRAM Windows allows).
 
+- AMD: pipelines are built without the driver's optimizer by default with AMD's own driver (it is the
+  `RX_VK_NOOPT=1` test switch, now on by itself there). Its compiler took 10 to 60 seconds on some shaders and froze
+  the game while it did. Every Longshot test ran this way. `RX_VK_NOOPT=0` turns it off.
+
 ### First start
 - **A start-up screen.** The game window opens at once and shows the shaders' preparation, with the Longshot logo and a
   few lines on how it is going (GPU and workers, rate and CPU use, counts). `RX_VK_STARTUP_DIAG=0` hides those lines.
