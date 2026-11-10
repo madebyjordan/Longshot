@@ -40,7 +40,42 @@ def main():
         assert not set(d) & set('"\\&|%'), d
         assert version.define(lf).startswith('-DHOOKSHOT_VERSION="') and version.define(lf).endswith(')"')
         os.environ.pop("HOOKSHOT_VERSION")
+    checkout()
     print("version: ok (%s)" % version.describe())
+
+
+def checkout():
+    """(longshot) a checkout's name: the tag when exactly on it, else the branch and commit, -dirty with changes"""
+    import shutil
+    import subprocess
+    if not shutil.which("git"):
+        print("version: no git, checkout names not checked")
+        return
+    with tempfile.TemporaryDirectory() as repo:
+        def git(*args):
+            return subprocess.run(["git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false",
+                                   "-c", "tag.gpgsign=false"] + list(args), capture_output=True, text=True, check=True).stdout.strip()
+        git("init", "-q", "-b", "dev")
+        tree(repo, "\n")
+        git("add", "-A")
+        git("commit", "-q", "-m", "one")
+        git("tag", "v2.0.6")   # (a Hookshot tag on an earlier commit: not this build's name)
+        with open(os.path.join(repo, "host", "a.c"), "a") as f:
+            f.write("two\n")
+        git("commit", "-q", "-am", "two")
+        sha = git("rev-parse", "--short=7", "HEAD")
+        assert version.release(repo) == "dev " + sha, version.release(repo)
+        with open(os.path.join(repo, "host", "a.c"), "a") as f:
+            f.write("not committed\n")
+        assert version.release(repo) == "dev %s-dirty" % sha, version.release(repo)
+        git("checkout", "-q", "--", ".")
+        git("tag", "v1.0.0")
+        assert version.release(repo) == "v1.0.0", version.release(repo)
+        with open(os.path.join(repo, "untracked.txt"), "w") as f:
+            f.write("a file git does not know\n")
+        assert version.release(repo) == "v1.0.0", "an untracked file is not a change to the build"
+        git("checkout", "-q", "--detach", "HEAD~1")
+        assert version.release(repo).startswith("v2.0.6"), version.release(repo)
 
 
 if __name__ == "__main__":

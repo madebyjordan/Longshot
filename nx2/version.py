@@ -5,8 +5,8 @@ The game prints it as the first line of hookshot_log.txt and in the Insert menu,
     python -I nx2/version.py            prints it for this folder
 
 The release name comes from, in order: HOOKSHOT_VERSION; a VERSION file at the root (written when a release is packaged,
-since the builder's tools folder has no git history); `git describe --tags --always --dirty` in a checkout, matching
-only version tags (`v0.1.0`, not the branch-like tags from before the scheme). The
+since the builder's tools folder has no git history); in a checkout, the release tag when the commit is exactly one,
+otherwise the branch and the commit (`dev 86148ce`, `-dirty` with changes not committed). The
 fingerprint is a hash of the sources in this folder (host/, gpu/, nx2/), line endings aside: every build from the
 same release zip gives the same one, so even a build that says "unknown" can be traced to the zip it came from. (A
 checkout and a release's tools folder hold different sets of files, so their fingerprints differ.)
@@ -33,13 +33,32 @@ def release(root=ROOT):
             if name:
                 break
     if not name and os.path.exists(os.path.join(root, ".git")):
-        try:
-            r = subprocess.run(["git", "-C", root, "describe", "--tags", "--always", "--dirty", "--match", "v[0-9]*"],
-                               capture_output=True, text=True, timeout=20)
-            name = r.stdout.strip() if r.returncode == 0 else ""
-        except (OSError, subprocess.SubprocessError):
-            pass
+        name = checkout_name(root)
     return name or "unknown"
+
+
+def checkout_name(root=ROOT):
+    """(longshot) A build from a checkout: the release tag when it is exactly one and has no changes ("v1.0.0"), else the
+    branch and the commit ("dev 86148ce", "main 03e97b8-dirty"). It was git describe, the nearest tag: Hookshot's v2.x tags
+    sit beside Longshot's own, and a dev build said "v2.0.6-480-g86148ce", neither Longshot's release nor which branch"""
+    def git(*args):
+        try:
+            r = subprocess.run(["git", "-C", root] + list(args), capture_output=True, text=True, timeout=20)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return r.stdout.strip() if r.returncode == 0 else None
+
+    sha = git("rev-parse", "--short=7", "HEAD")
+    if not sha:
+        return ""
+    dirty = bool(git("status", "--porcelain", "--untracked-files=no"))
+    tag = git("describe", "--tags", "--exact-match", "--match", "v[0-9]*", "HEAD")
+    if tag and not dirty:
+        return tag
+    branch = git("rev-parse", "--abbrev-ref", "HEAD")
+    if not branch or branch == "HEAD":
+        branch = "detached"
+    return "%s %s%s" % (branch, sha, "-dirty" if dirty else "")
 
 
 def fingerprint(root=ROOT):

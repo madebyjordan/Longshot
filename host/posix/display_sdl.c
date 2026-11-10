@@ -230,7 +230,11 @@ void hos_display_loop(void) {
         int w = 0, h = 0;
         if (sscanf(getenv("HOS_WINDOW_SIZE"), "%dx%d", &w, &h) == 2 && w >= 64 && h >= 64) win_w = w, win_h = h;
     }
-    window = hos_sdl_window(HOS_GAME_TITLE, win_w, win_h);
+    char title[160];   /* (longshot) "Longshot - dev 86148ce": which build this is (HOS_BUILD_NAME, hos_main.c) */
+    const char *build = getenv("HOS_BUILD_NAME");
+    if (build && *build && strcmp(build, "unknown")) snprintf(title, sizeof title, "%s - %s", HOS_GAME_TITLE, build);
+    else snprintf(title, sizeof title, "%s", HOS_GAME_TITLE);
+    window = hos_sdl_window(title, win_w, win_h);
     if (!window) {
         hos_log("display: SDL_CreateWindow: %s: no window", hos_sdl_error());
         rx_start(NULL);
