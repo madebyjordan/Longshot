@@ -48,6 +48,13 @@ branch as checked out), with AMD FSR 4. They share the game files (hard links) a
 settings, so switching costs nothing. The window's title, the start-up screen, the Insert menu and the log's first line
 say which one runs: a release its tag (`v1.0.0`), any other build its branch and commit (`dev 86148ce`).
 
+Opening `Longshot.exe` in `game` shows the launcher (the Longshot Builder in launch mode, `builder/HookshotBuilder/Launcher.cs`):
+a version list with the published releases and every dev build in a folder beside `game` (its `hookshot_build.txt` says
+`channel=dev`; `build-game.ps1` writes it), and one button that plays the version picked, or updates or builds the folder to
+it first. The pick is kept per folder (`%LOCALAPPDATA%\LongshotBuilder\launcher.json`). Its text is in Marcellus (OFL, in the
+app); a font file of your own in `%LOCALAPPDATA%\LongshotBuilderonts` is used instead. A commercial font such as
+FOT-Chiaro is never added to the repository or the app: its license does not allow passing it on.
+
 ### Test runs without another game folder
 
 A new game folder costs 24 GB (the romfs, unless hard-linked) and a played one another 7 GB of caches; none is needed to

@@ -190,30 +190,6 @@ public partial class MainWindow : Window
         return i >= 0 && i + 1 < a.Length ? a[i + 1].TrimEnd('\\', '/') : null;
     }
 
-    async void ShowLauncher(string folder)
-    {
-        launchFolder = folder;
-        OutPath.Text = folder;
-        StepPill.Visibility = Visibility.Collapsed;
-        var game = GameVersion(folder) ?? ReadVersion(folder);
-        LaunchVersion.Text = (game != null ? $"Longshot {game}" : "Longshot") + " · " + folder;
-        LaunchPlay.IsEnabled = File.Exists(GameExe(folder));
-        ShowPage(LaunchPage);
-        latestTag = Environment.GetEnvironmentVariable("HOOKSHOT_LATEST_TAG") is { Length: > 0 } fake ? (fake == "none" ? null : fake) : await Updater.LatestTag();
-        updateTarget = latestTag ?? Tools.Find()?.Version;   // (GitHub's newest, else this builder's own)
-        if (updateTarget == null) LaunchStatus.Text = "Could not check for updates (GitHub did not answer)";
-        else if (game != null && game != updateTarget && GameVersion(folder) != null)
-        {
-            LaunchStatus.Text = $"Update available: {updateTarget}";
-            LaunchStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xB9, 0xC8, 0xFF));
-            LaunchStatus.FontWeight = FontWeights.SemiBold;
-            LaunchUpdate.Visibility = Visibility.Visible;
-        }
-        else if (game != null && game != updateTarget)
-            LaunchStatus.Text = $"{updateTarget} is out: build this folder again with the Longshot Builder to get it";
-        else LaunchStatus.Text = latestTag == null ? "Up to date with this builder (GitHub did not answer)" : "Up to date";
-    }
-
     /// (a folder built before it kept its game files has a version too: only shown)
     static string? ReadVersion(string folder)
     {
@@ -240,17 +216,6 @@ public partial class MainWindow : Window
         si.Environment["HOOKSHOT_NO_UPDATE_CHECK"] = "1";
         Process.Start(si);
     }
-
-    void LaunchUpdateClick(object sender, RoutedEventArgs e) => Updater.UpdateFolder(this, launchFolder, updateTarget, fetched: false);
-
-    void LaunchPlayClick(object sender, RoutedEventArgs e)
-    {
-        StartGame(launchFolder);
-        Application.Current.Shutdown();
-    }
-
-    void LaunchFolderClick(object sender, RoutedEventArgs e) =>
-        Process.Start(new ProcessStartInfo(launchFolder) { UseShellExecute = true });
 
     // ---- what the player chose last time (the install folder, the game files): builder-settings.json beside the versions ----
     sealed class BuilderSettings
@@ -410,7 +375,7 @@ public partial class MainWindow : Window
 
     void ShowPage(FrameworkElement page)
     {
-        foreach (var p in new FrameworkElement[] { FilesPage, BuildPage, ReadyPage, ProblemPage, LaunchPage })
+        foreach (var p in new FrameworkElement[] { FilesPage, BuildPage, ReadyPage, ProblemPage })
             p.Visibility = p == page ? Visibility.Visible : Visibility.Collapsed;
         page.Opacity = 0;
         page.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(250)));

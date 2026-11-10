@@ -275,26 +275,6 @@
         </StackPanel>
 
         <!-- ===== the launcher (Hookshot Launcher.exe in the game folder, started with launch and its folder) ===== -->
-        <StackPanel x:Name="LaunchPage" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center">
-          <TextBlock Style="{StaticResource Label}" Text="THE LEGEND OF ZELDA" HorizontalAlignment="Center"/>
-          <TextBlock Style="{StaticResource Heading}" Text="Ocarina of Time" HorizontalAlignment="Center" FontSize="34" Margin="0,4,0,0"/>
-          <TextBlock x:Name="LaunchVersion" Style="{StaticResource Sub}" HorizontalAlignment="Center" TextAlignment="Center" Margin="0,8,0,0"/>
-          <TextBlock x:Name="LaunchStatus" FontSize="13" Foreground="{StaticResource InkSoft}" Text="Checking for updates…"
-                     HorizontalAlignment="Center" Margin="0,16,0,0"/>
-          <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,28,0,0">
-            <Button x:Name="LaunchUpdate" Style="{StaticResource Primary}" Height="50" Padding="26,0" Margin="0,0,12,0" Content="Update"
-                    Visibility="Collapsed" Click="LaunchUpdateClick"/>
-            <Button x:Name="LaunchPlay" Style="{StaticResource GoButton}" Click="LaunchPlayClick">
-              <StackPanel Orientation="Horizontal">
-                <Path Data="M0,0 L11,7 L0,14 Z" Fill="{StaticResource GoInk}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                <TextBlock Text="Play" FontSize="16" FontWeight="Bold" Foreground="{StaticResource GoInk}"/>
-              </StackPanel>
-            </Button>
-          </StackPanel>
-          <Button x:Name="LaunchFolder" Style="{StaticResource LinkButton}" Foreground="{StaticResource InkFaint}" HorizontalAlignment="Center"
-                  Margin="0,22,0,0" Content="Open the game folder" Click="LaunchFolderClick"/>
-        </StackPanel>
-
         <!-- ===== when something goes wrong ===== -->
         <Grid x:Name="ProblemPage" Visibility="Collapsed">
           <Grid.RowDefinitions>
@@ -342,6 +322,218 @@
         </Grid>
       </Grid>
     </Grid>
+
+    <!-- ===================== the launcher: Longshot.exe in a game folder (launch mode, builder/setup/setup.c) =====================
+         The game's front door: the wordmark, the version to play (the releases, and a dev build beside the folder when there is one)
+         and one button that plays it, or updates or builds the folder to it first (Launcher.cs) -->
+    <Border x:Name="LauncherScreen" Visibility="Collapsed" Panel.ZIndex="8" CornerRadius="18" ClipToBounds="True">
+      <Border.Background>
+        <RadialGradientBrush Center="0.5,0.46" GradientOrigin="0.5,0.46" RadiusX="0.72" RadiusY="0.82">
+          <GradientStop Color="#1F2222" Offset="0"/>
+          <GradientStop Color="#151616" Offset="0.62"/>
+          <GradientStop Color="#0B0B0B" Offset="1"/>
+        </RadialGradientBrush>
+      </Border.Background>
+      <Grid>
+        <Grid.Resources>
+          <LinearGradientBrush x:Key="Gold" StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Color="#F4D684" Offset="0"/>
+            <GradientStop Color="#D7B05A" Offset="0.5"/>
+            <GradientStop Color="#B38A3C" Offset="1"/>
+          </LinearGradientBrush>
+          <FontFamily x:Key="Serif">pack://application:,,,/Fonts/#Marcellus</FontFamily>
+          <!-- a corner's flourish: a bar that ends in a curl (drawn for the top left, turned for the other corners) -->
+          <Style x:Key="Corner" TargetType="Path">
+            <Setter Property="Width" Value="198"/>
+            <Setter Property="Height" Value="85"/>
+            <Setter Property="Stretch" Value="Uniform"/>
+            <Setter Property="Fill" Value="#352B23"/>
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
+            <Setter Property="IsHitTestVisible" Value="False"/>
+            <Setter Property="Data" Value="M25,24.5 L65,0 C75,0 91.1667,11.3333 98,17 H194.5 L198,28.5 C184,28 153,27.3 141,28.5 C126,30 101,42.5 98,41.5
+                    C95,40.5 71.5,19.5 65,17 C58.5,14.5 41.5,35 36,55 C30.5,75 64.5,70.5 68.5,61.5 C71.7,54.3 59.1667,49.8333 52.5,48.5
+                    C55.5,47 64.2,44.2 75,45 C85.8,45.8 87.1667,66.6667 86.5,77 L52.5,84.5 L22.5,61.5 L0,72.5 L25,24.5 Z"/>
+          </Style>
+          <!-- the wordmark's ends: an arrowhead and a notch, as on the logo -->
+          <Style x:Key="Tip" TargetType="Path">
+            <Setter Property="Width" Value="84"/>
+            <Setter Property="Height" Value="74"/>
+            <Setter Property="Stretch" Value="Uniform"/>
+            <Setter Property="Fill" Value="{StaticResource Gold}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
+            <Setter Property="Data" Value="M0,35 L62,0 L80,11 L66,35 L80,59 L62,70 Z"/>
+            <Setter Property="Effect">
+              <Setter.Value><DropShadowEffect Color="#E9B44C" BlurRadius="18" ShadowDepth="0" Opacity="0.5"/></Setter.Value>
+            </Setter>
+          </Style>
+          <Style x:Key="VersionItem" TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="#ECE7DC"/>
+            <Setter Property="FontFamily" Value="{DynamicResource Serif}"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="ComboBoxItem">
+                  <Border x:Name="Box" Background="Transparent" Padding="16,10">
+                    <ContentPresenter/>
+                  </Border>
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsHighlighted" Value="True">
+                      <Setter TargetName="Box" Property="Background" Value="#1D1C19"/>
+                    </Trigger>
+                    <Trigger Property="IsSelected" Value="True">
+                      <Setter TargetName="Box" Property="Background" Value="#24211A"/>
+                    </Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+          <Style x:Key="VersionPick" TargetType="ComboBox">
+            <Setter Property="FontFamily" Value="{DynamicResource Serif}"/>
+            <Setter Property="FontSize" Value="17"/>
+            <Setter Property="Foreground" Value="#F2EEE6"/>
+            <Setter Property="ItemContainerStyle" Value="{StaticResource VersionItem}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                  <Grid>
+                    <ToggleButton Focusable="False" ClickMode="Press"
+                                  IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                      <ToggleButton.Template>
+                        <ControlTemplate TargetType="ToggleButton">
+                          <Border x:Name="Box" Background="#080808" BorderBrush="#34312C" BorderThickness="1">
+                            <Path Data="M0,0 L6,6 L12,0" Stroke="#D9D4CA" StrokeThickness="1.4" HorizontalAlignment="Right"
+                                  VerticalAlignment="Center" Margin="0,0,20,0"/>
+                          </Border>
+                          <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                              <Setter TargetName="Box" Property="BorderBrush" Value="#5A5246"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                              <Setter TargetName="Box" Property="BorderBrush" Value="#8C7442"/>
+                            </Trigger>
+                          </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                      </ToggleButton.Template>
+                    </ToggleButton>
+                    <ContentPresenter IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}"
+                                      ContentTemplate="{TemplateBinding ItemTemplate}" VerticalAlignment="Center" Margin="22,0,44,1"/>
+                    <!-- (opens upward: the list is at the window's foot) -->
+                    <Popup IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Top" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                      <Border Background="#0D0D0C" BorderBrush="#34312C" BorderThickness="1" Margin="0,0,0,4"
+                              MinWidth="{TemplateBinding ActualWidth}" MaxHeight="320">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                          <ItemsPresenter/>
+                        </ScrollViewer>
+                      </Border>
+                    </Popup>
+                  </Grid>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+          <Style x:Key="GoldButton" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                  <Border x:Name="Box" Background="#C4A052">
+                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                  </Border>
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                      <Setter TargetName="Box" Property="Background" Value="#D3B062"/>
+                    </Trigger>
+                    <Trigger Property="IsPressed" Value="True">
+                      <Setter TargetName="Box" Property="Background" Value="#B08F47"/>
+                    </Trigger>
+                    <Trigger Property="IsEnabled" Value="False">
+                      <Setter TargetName="Box" Property="Background" Value="#4D4433"/>
+                      <Setter Property="Cursor" Value="Arrow"/>
+                    </Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+          <Style x:Key="QuietLink" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                  <TextBlock x:Name="Text" Text="{TemplateBinding Content}" FontFamily="{DynamicResource Serif}" FontSize="12" Foreground="#6A645A"/>
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                      <Setter TargetName="Text" Property="Foreground" Value="#B9AE98"/>
+                    </Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+        </Grid.Resources>
+
+        <!-- the frame and its corners -->
+        <Border Margin="9" CornerRadius="11" BorderBrush="#352F27" BorderThickness="1.5" IsHitTestVisible="False"/>
+        <Path Style="{StaticResource Corner}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="30,40,0,0"/>
+        <Path Style="{StaticResource Corner}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,40,30,0">
+          <Path.RenderTransform><ScaleTransform ScaleX="-1"/></Path.RenderTransform>
+        </Path>
+        <Path Style="{StaticResource Corner}" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="30,0,0,32">
+          <Path.RenderTransform><ScaleTransform ScaleY="-1"/></Path.RenderTransform>
+        </Path>
+        <Path Style="{StaticResource Corner}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,30,32">
+          <Path.RenderTransform><ScaleTransform ScaleX="-1" ScaleY="-1"/></Path.RenderTransform>
+        </Path>
+
+        <!-- the wordmark -->
+        <StackPanel VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,104,0,0" IsHitTestVisible="False">
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+            <Path Style="{StaticResource Tip}"/>
+            <TextBlock Text="LONGSHOT" FontFamily="pack://application:,,,/Fonts/#Cinzel Black" FontSize="66" Foreground="{StaticResource Gold}"
+                       VerticalAlignment="Center" Margin="16,0,16,6">
+              <TextBlock.Effect><DropShadowEffect Color="#E9B44C" BlurRadius="24" ShadowDepth="0" Opacity="0.55"/></TextBlock.Effect>
+            </TextBlock>
+            <Path Style="{StaticResource Tip}">
+              <Path.RenderTransform><ScaleTransform ScaleX="-1"/></Path.RenderTransform>
+            </Path>
+          </StackPanel>
+          <TextBlock Text="Ocarina of Time Recomp" FontFamily="{DynamicResource Serif}" FontSize="19" Foreground="#ECE7DC"
+                     HorizontalAlignment="Center" Margin="0,22,0,0"/>
+        </StackPanel>
+
+        <!-- the version, and the button that plays it -->
+        <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,38">
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+            <ComboBox x:Name="LauncherVersions" Style="{StaticResource VersionPick}" Width="270" Height="50" VerticalAlignment="Center"
+                      SelectionChanged="LauncherVersionChanged">
+              <ComboBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock FontFamily="{DynamicResource Serif}">
+                    <Run Text="{Binding Label, Mode=OneWay}"/>
+                    <Run Text="{Binding Badge, Mode=OneWay}" Foreground="{Binding BadgeBrush, Mode=OneWay}"/>
+                  </TextBlock>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <Button x:Name="LauncherGo" Style="{StaticResource GoldButton}" Width="220" Height="76" Margin="40,0,0,0" Click="LauncherGoClick">
+              <TextBlock x:Name="LauncherGoText" Text="Play" FontFamily="{DynamicResource Serif}" FontSize="32" Foreground="#16140F" Margin="0,0,0,3"/>
+            </Button>
+          </StackPanel>
+          <TextBlock x:Name="LauncherStatus" FontFamily="{DynamicResource Serif}" FontSize="13" Foreground="#8F887B" HorizontalAlignment="Center"
+                     TextAlignment="Center" Margin="0,16,0,0" MinHeight="18"/>
+          <Button x:Name="LauncherFolder" Style="{StaticResource QuietLink}"
+                  HorizontalAlignment="Center" Margin="0,6,0,0" Content="Open the game folder" Click="LauncherFolderClick"/>
+        </StackPanel>
+      </Grid>
+    </Border>
 
     <!-- the window's own buttons, over everything -->
     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0" Panel.ZIndex="9"

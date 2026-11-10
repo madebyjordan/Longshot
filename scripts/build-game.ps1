@@ -107,4 +107,8 @@ if ($Channel -eq "dev") {
     "  shortcut: $lnk"
 }
 $name = (Select-String -Path $log -Pattern '^version: (.*)$' | Select-Object -Last 1).Matches.Groups[1].Value
+if ($Channel -eq "dev") {   # (the launcher lists it beside the releases: builder/HookshotBuilder/Launcher.cs)
+    $short = if ($name -match '^(.*?) \(source') { $matches[1] } else { $name }
+    Set-Content (Join-Path $out "hookshot_build.txt") @("name=$short", "channel=dev") -Encoding ascii
+}
 "$Channel built in {0:N0} min: $out, '$name'" -f ((Get-Date) - $t0).TotalMinutes

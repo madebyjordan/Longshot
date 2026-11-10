@@ -34,6 +34,36 @@ static class Updater
         UpdateFolder(w, folder, tag, fetched);
     }
 
+    /// (the launcher's version list) Every published release's tag, newest first, and the latest one (not a pre-release); empty and
+    /// null when GitHub did not answer. One try: the launcher already shows what is on this PC
+    public static async Task<(List<string> Tags, string? Latest)> Releases()
+    {
+        var tags = new List<string>();
+        string? latest = null;
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("LongshotBuilder");
+            using var request = new HttpRequestMessage(HttpMethod.Get, Latest[..Latest.LastIndexOf('/')] + "?per_page=30");
+            request.Headers.Accept.ParseAdd("application/vnd.github+json");
+            using var response = await http.SendAsync(request);
+            if (response.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                foreach (var r in doc.RootElement.EnumerateArray())
+                {
+                    if (r.GetProperty("draft").GetBoolean() || r.GetProperty("tag_name").GetString() is not { Length: > 0 } tag) continue;
+                    tags.Add(tag);
+                    if (latest == null && !r.GetProperty("prerelease").GetBoolean()) latest = tag;
+                }
+            }
+        }
+        catch (Exception) { }
+        latest ??= tags.Count == 0 ? await LatestTag() : null;   // (the API's limit: the setup list still names the latest)
+        if (latest != null && !tags.Contains(latest)) tags.Insert(0, latest);
+        return (tags, latest);
+    }
+
     /// The latest release's tag, quietly (null: GitHub did not answer); a few tries, 20 s at most
     public static async Task<string?> LatestTag()
     {
