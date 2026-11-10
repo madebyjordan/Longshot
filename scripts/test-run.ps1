@@ -135,7 +135,13 @@ while ($true) {
     if ($mb -gt $MaxGB * 1024) { "memory guard: $mb MB, stopped"; break }
     if ($Seconds -gt 0 -and ((Get-Date) - $t0).TotalSeconds -ge $Seconds) { break }
 }
-if (-not $exited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; $p.WaitForExit(10000) | Out-Null }
+if (-not $exited) {
+    # (closed as a player closes it first: a stop mid-prepare otherwise leaves the cache's "did not finish" marker, and the next
+    # run from that cache leaves the driver's part out. Killed only when it has no window or does not close)
+    $closed = $false
+    try { if ($p.CloseMainWindow()) { $closed = $p.WaitForExit(20000) } } catch {}
+    if (-not $closed) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; $p.WaitForExit(10000) | Out-Null }
+}
 }
 $secs = [int]((Get-Date) - $t0).TotalSeconds
 
