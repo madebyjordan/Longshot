@@ -34,6 +34,31 @@ static class Glass
         DwmSetWindowAttribute(hwnd, CornerPreference, ref corner, sizeof(int));
     }
 
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd, out Edges edges);
+    [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hwnd, int flags);
+    [DllImport("user32.dll")] static extern bool GetMonitorInfoW(IntPtr monitor, ref MonitorInfo info);
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct Edges { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct MonitorInfo { public int Size; public Edges Monitor, Work; public int Flags; }
+
+    /// (the launcher, maximised) A maximised window is larger than its screen by its frame's width on every side, and Windows
+    /// hides what is past the screen's edges. With the frame drawn by the window itself that is its own content (8 px of the title
+    /// bar and of every edge, measured 2026-11-10): how much is hidden on each side, for the content to stand in from
+    public static Thickness Overhang(Window w)
+    {
+        var hwnd = new WindowInteropHelper(w).Handle;
+        var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        const int Nearest = 2;
+        if (hwnd == IntPtr.Zero || !GetWindowRect(hwnd, out var r) || !GetMonitorInfoW(MonitorFromWindow(hwnd, Nearest), ref info))
+            return new Thickness(0);
+        var dip = HwndSource.FromHwnd(hwnd)?.CompositionTarget?.TransformFromDevice ?? Matrix.Identity;
+        return new Thickness(Math.Max(0, info.Work.Left - r.Left) * dip.M11, Math.Max(0, info.Work.Top - r.Top) * dip.M22,
+                             Math.Max(0, r.Right - info.Work.Right) * dip.M11, Math.Max(0, r.Bottom - info.Work.Bottom) * dip.M22);
+    }
+
     /// Windows draws the acrylic in the system's Windows mode. Its light variant is brighter than anything the installer's
     /// tint can darken enough: the fixed Slate palette has light text and InkFaint (the inactive steps, the "Supported
     /// version" badge, the details) needs the dark page behind it. A light system gets that page, as Windows 10 does.

@@ -14,7 +14,8 @@ using Microsoft.Win32;
 namespace HookshotBuilder;
 
 /// The installer: one 960x600 window. It opens with the hookshot in the middle while it looks for the game files, then walks
-/// through Game files > Build > Play. The game's update offer (Updater.cs) opens the same window on its update screen.
+/// through Game files > Build > Play. The game's update offer (Updater.cs) opens the same window on its update screen, and
+/// Longshot.exe in a game folder opens it as the launcher (Launcher.cs: 960x640, and it can be maximised).
 public partial class MainWindow : Window
 {
     const long NeededBytes = 60L << 30;
@@ -58,7 +59,7 @@ public partial class MainWindow : Window
         {
             if (LaunchArg() != null)   // (the launcher: its own dark page from the first frame, no grey acrylic before it draws)
             {
-                var dark = new SolidColorBrush(Color.FromRgb(0x0E, 0x0F, 0x0F));
+                var dark = new SolidColorBrush(Color.FromRgb(0x12, 0x12, 0x12));
                 Background = dark;
                 Root.Background = dark;
                 Glass.Plain(this, dark.Color);
@@ -79,7 +80,15 @@ public partial class MainWindow : Window
         if (LaunchArg() != null)   // (the launcher from the window's first frame: no start-up animation before it)
         {
             Splash.Visibility = Visibility.Collapsed;
-            LauncherScreen.Visibility = Visibility.Visible;
+            LauncherWindow(true);
+            // (development, HOOKSHOT_UI_SHOT: the launcher drawn to a file, Launcher.cs. Away from the screen, and it takes no keys)
+            if (Environment.GetEnvironmentVariable("HOOKSHOT_UI_SHOT") is { Length: > 0 })
+            {
+                ShowActivated = false;
+                ShowInTaskbar = false;
+                WindowStartupLocation = WindowStartupLocation.Manual;
+                (Left, Top) = (-20000, -20000);
+            }
         }
     }
 

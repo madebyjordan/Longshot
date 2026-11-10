@@ -5,7 +5,8 @@
         WindowStartupLocation="CenterScreen" Background="Transparent" AllowDrop="True"
         UseLayoutRounding="True" SnapsToDevicePixels="True" FontFamily="{StaticResource Ui}">
 
-  <!-- One window, always 960x600: Windows 11's acrylic behind it (Glass.cs), Slate on Windows 10 -->
+  <!-- One window, 960x600: Windows 11's acrylic behind it (Glass.cs), Slate on Windows 10. The launcher makes it 960x640 and
+       lets it be maximised (Launcher.cs) -->
   <WindowChrome.WindowChrome>
     <WindowChrome CaptionHeight="64" ResizeBorderThickness="0" GlassFrameThickness="-1" CornerRadius="18" UseAeroCaptionButtons="False"/>
   </WindowChrome.WindowChrome>
@@ -324,32 +325,16 @@
     </Grid>
 
     <!-- ===================== the launcher: Longshot.exe in a game folder (launch mode, builder/setup/setup.c) =====================
-         The game's front door: the wordmark, the version to play (the releases, and a dev build beside the folder when there is one)
-         and one button that plays it, or updates or builds the folder to it first (Launcher.cs) -->
-    <Border x:Name="LauncherScreen" Visibility="Collapsed" Panel.ZIndex="8" CornerRadius="18" ClipToBounds="True">
-      <Border.Background>
-        <RadialGradientBrush Center="0.5,0.46" GradientOrigin="0.5,0.46" RadiusX="0.72" RadiusY="0.82">
-          <GradientStop Color="#1F2222" Offset="0"/>
-          <GradientStop Color="#151616" Offset="0.62"/>
-          <GradientStop Color="#0B0B0B" Offset="1"/>
-        </RadialGradientBrush>
-      </Border.Background>
-      <Grid>
+         The game's front door, as drawn in Paper (the file Longshot: "Launcher" and "Launcher - Version List", 960 x 640): the
+         wordmark over a dim picture of the game, one button that plays the version picked (or updates or builds the folder to it
+         first), and All Versions, a bar from the left with what is on this PC and the releases that are not (Launcher.cs) -->
+    <Border x:Name="LauncherScreen" Visibility="Collapsed" Panel.ZIndex="8" Background="#121212" MouseLeftButtonDown="LauncherBackClick">
+      <Grid ClipToBounds="True">
         <Grid.Resources>
           <FontFamily x:Key="Serif">pack://application:,,,/Fonts/#Marcellus</FontFamily>
-          <!-- a corner's flourish: a bar that ends in a curl (drawn for the top left, turned for the other corners) -->
-          <Style x:Key="Corner" TargetType="Path">
-            <Setter Property="Width" Value="198"/>
-            <Setter Property="Height" Value="85"/>
-            <Setter Property="Stretch" Value="Uniform"/>
-            <Setter Property="Fill" Value="#352B23"/>
-            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
-            <Setter Property="IsHitTestVisible" Value="False"/>
-            <Setter Property="Data" Value="M25,24.5 L65,0 C75,0 91.1667,11.3333 98,17 H194.5 L198,28.5 C184,28 153,27.3 141,28.5 C126,30 101,42.5 98,41.5
-                    C95,40.5 71.5,19.5 65,17 C58.5,14.5 41.5,35 36,55 C30.5,75 64.5,70.5 68.5,61.5 C71.7,54.3 59.1667,49.8333 52.5,48.5
-                    C55.5,47 64.2,44.2 75,45 C85.8,45.8 87.1667,66.6667 86.5,77 L52.5,84.5 L22.5,61.5 L0,72.5 L25,24.5 Z"/>
-          </Style>
-          <!-- the wordmark, as drawn (LONGSHOT and its two arrowheads, 826 x 112) -->
+          <FontFamily x:Key="Icons">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+          <SolidColorBrush x:Key="Leather" Color="#815E40"/>
+          <!-- the wordmark's letters, as drawn (in their drawing they start at 131.803, 12.673 and are 561.741 x 86.14) -->
           <GeometryGroup x:Key="Wordmark" FillRule="Nonzero">
             <PathGeometry FillRule="EvenOdd" Figures="M173.946 88.3678L184.037 62.7213L188.356 51.7414V65.7597V96.7783H131.803L141.455 88.3678V23.3899L131.803 14.9794H171.499L161.711 23.3899V88.3678H173.946Z"/>
             <PathGeometry FillRule="EvenOdd" Figures="M231.022 12.809C252.366 12.809 266.912 30.9865 266.912 55.9467C266.912 80.7712 252.366 98.8131 231.022 98.8131C209.407 98.8131 194.997 80.7712 194.997 55.9467C194.997 30.9865 209.407 12.809 231.022 12.809ZM231.022 89.7243C241.082 89.7243 246.656 79.8216 246.656 55.6754C246.656 31.6648 241.082 21.7621 231.022 21.7621C220.826 21.7621 215.253 31.6648 215.253 55.6754C215.253 79.8216 220.826 89.7243 231.022 89.7243ZM222.866 56.218L231.022 43.3309L239.043 56.218L231.022 68.5624L222.866 56.218Z"/>
@@ -359,97 +344,81 @@
             <PathGeometry FillRule="EvenOdd" Figures="M543.109 23.3899V88.3678L552.761 96.7783H514.968L524.484 88.3678V59.6093H502.461V88.3678L512.249 96.7783H474.456L483.972 88.3678V23.3899L474.456 14.9794H512.249L502.461 23.3899V49.978H524.484V23.3899L514.968 14.9794H552.761L543.109 23.3899Z"/>
             <PathGeometry FillRule="EvenOdd" Figures="M600.584 20.4152C603.671 21.4761 610.504 23.8241 616.782 25.219C622.985 32.8704 626.559 43.5754 626.559 55.9467C626.559 80.7712 612.012 98.8131 590.669 98.8131C569.053 98.8131 554.643 80.7712 554.643 55.9467C554.643 36.9343 563.004 21.8573 576.541 15.7514C582.78 15.8794 586.826 15.3288 589.966 14.9015C590.821 14.7851 591.609 14.6779 592.356 14.596C596.377 17.0447 598.19 18.911 598.927 19.6701C599.045 19.7912 599.135 19.884 599.202 19.9467C599.484 20.0371 599.957 20.1997 600.584 20.4152ZM590.669 89.7243C600.729 89.7243 606.303 79.8216 606.303 55.6754C606.303 31.6648 600.729 21.7621 590.669 21.7621C580.473 21.7621 574.899 31.6648 574.899 55.6754C574.899 79.8216 580.473 89.7243 590.669 89.7243ZM582.512 56.218L590.669 43.3309L598.69 56.218L590.669 68.5624L582.512 56.218Z"/>
             <PathGeometry FillRule="EvenOdd" Figures="M632.713 17.4516C632.325 17.443 631.94 17.3675 631.553 17.2372V48.3501L642.292 23.3899H652.216V88.3678L642.836 96.7783H682.26L672.608 88.3678V23.3899H682.668L693.544 48.3501V14.9794H677.195C676.47 15.4871 675.8 16.0015 675.17 16.4854C673.326 17.9023 671.82 19.0587 670.255 19.024C668.65 18.9884 667.035 18.5229 665.056 17.9525C661.926 17.0504 657.886 15.8861 651.539 15.7452C645.223 15.605 641.129 16.3112 637.956 16.8585C635.949 17.2046 634.311 17.4871 632.713 17.4516Z"/>
-            <PathGeometry FillRule="EvenOdd" Figures="M733.352 13.5896L705.457 33.2546L720.119 55.2849L705.457 77.3152L733.352 96.9802L812.673 55.2849L733.352 13.5896Z"/>
-            <PathGeometry FillRule="EvenOdd" Figures="M91.9948 13.5896L119.89 33.2546L105.228 55.2849L119.89 77.3152L91.9948 96.9802L12.6734 55.2849L91.9948 13.5896Z"/>
           </GeometryGroup>
-          <Style x:Key="VersionItem" TargetType="ComboBoxItem">
-            <Setter Property="Foreground" Value="#ECE7DC"/>
-            <Setter Property="FontFamily" Value="{DynamicResource Serif}"/>
+          <!-- the launcher's text: Segoe UI, 16 in a line of 20 -->
+          <Style x:Key="Line" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="FontSize" Value="16"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="LineHeight" Value="20"/>
+            <Setter Property="LineStackingStrategy" Value="BlockLineHeight"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+          </Style>
+          <!-- (the keyboard's place: a line around the button it is on) -->
+          <Style x:Key="Ring" TargetType="Control">
             <Setter Property="Template">
               <Setter.Value>
-                <ControlTemplate TargetType="ComboBoxItem">
-                  <Border x:Name="Box" Background="Transparent" Padding="16,10">
-                    <ContentPresenter/>
-                  </Border>
+                <ControlTemplate>
+                  <Rectangle Stroke="#EBB07E" StrokeThickness="1.5" RadiusX="8" RadiusY="8" Margin="-4"/>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+          <!-- a round-ended button: All Versions (black), Check for updates (leather), the version under Play (no fill) -->
+          <Style x:Key="Pill" TargetType="Button">
+            <Setter Property="Background" Value="#000000"/>
+            <Setter Property="Padding" Value="24,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{StaticResource Ring}"/>
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                  <Grid>
+                    <Border Background="{TemplateBinding Background}" CornerRadius="18"/>
+                    <Border x:Name="Shine" Background="#FFFFFF" CornerRadius="18" Opacity="0"/>
+                    <TextBlock Style="{StaticResource Line}" Text="{TemplateBinding Content}" Margin="{TemplateBinding Padding}"
+                               HorizontalAlignment="Center"/>
+                  </Grid>
                   <ControlTemplate.Triggers>
-                    <Trigger Property="IsHighlighted" Value="True">
-                      <Setter TargetName="Box" Property="Background" Value="#1D1C19"/>
+                    <Trigger Property="IsMouseOver" Value="True">
+                      <Setter TargetName="Shine" Property="Opacity" Value="0.1"/>
                     </Trigger>
-                    <Trigger Property="IsSelected" Value="True">
-                      <Setter TargetName="Box" Property="Background" Value="#24211A"/>
+                    <Trigger Property="IsPressed" Value="True">
+                      <Setter TargetName="Shine" Property="Opacity" Value="0.04"/>
                     </Trigger>
                   </ControlTemplate.Triggers>
                 </ControlTemplate>
               </Setter.Value>
             </Setter>
           </Style>
-          <Style x:Key="VersionPick" TargetType="ComboBox">
-            <Setter Property="FontFamily" Value="{DynamicResource Serif}"/>
-            <Setter Property="FontSize" Value="17"/>
-            <Setter Property="Foreground" Value="#F2EEE6"/>
-            <Setter Property="ItemContainerStyle" Value="{StaticResource VersionItem}"/>
+          <!-- Play: a torn strip of leather, as drawn (257 x 98) -->
+          <Style x:Key="PlayButton" TargetType="Button">
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
-            <Setter Property="Template">
-              <Setter.Value>
-                <ControlTemplate TargetType="ComboBox">
-                  <Grid>
-                    <ToggleButton Focusable="False" ClickMode="Press"
-                                  IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
-                      <ToggleButton.Template>
-                        <ControlTemplate TargetType="ToggleButton">
-                          <Border x:Name="Box" Background="#080808" BorderBrush="#34312C" BorderThickness="1">
-                            <Path Data="M0,0 L6,6 L12,0" Stroke="#D9D4CA" StrokeThickness="1.4" HorizontalAlignment="Right"
-                                  VerticalAlignment="Center" Margin="0,0,20,0"/>
-                          </Border>
-                          <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                              <Setter TargetName="Box" Property="BorderBrush" Value="#5A5246"/>
-                            </Trigger>
-                            <Trigger Property="IsChecked" Value="True">
-                              <Setter TargetName="Box" Property="BorderBrush" Value="#8C7442"/>
-                            </Trigger>
-                          </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                      </ToggleButton.Template>
-                    </ToggleButton>
-                    <ContentPresenter IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}"
-                                      ContentTemplate="{TemplateBinding ItemTemplate}" VerticalAlignment="Center" Margin="22,0,44,1"/>
-                    <!-- (opens upward: the list is at the window's foot) -->
-                    <Popup IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Top" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
-                      <Border Background="#0D0D0C" BorderBrush="#34312C" BorderThickness="1" Margin="0,0,0,4"
-                              MinWidth="{TemplateBinding ActualWidth}" MaxHeight="320">
-                        <ScrollViewer VerticalScrollBarVisibility="Auto">
-                          <ItemsPresenter/>
-                        </ScrollViewer>
-                      </Border>
-                    </Popup>
-                  </Grid>
-                </ControlTemplate>
-              </Setter.Value>
-            </Setter>
-          </Style>
-          <Style x:Key="GoldButton" TargetType="Button">
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="FocusVisualStyle" Value="{StaticResource Ring}"/>
             <Setter Property="Template">
               <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                  <Border x:Name="Box" Background="#C4A052">
+                  <Grid x:Name="All">
+                    <Path x:Name="Strip" Stretch="Fill" Fill="{StaticResource Leather}"
+                          Data="M442.631 118.999C448.417 120.005 452.962 121.032 453.489 121.045 454.487 121.07 475.335 122.287 486.302 122.555
+                                492.957 122.718 503.52 122.793 511 122.832 511 122.832 511 209.654 511 209.654 507.192 209.846 503.557 210.032
+                                500.7 210.184 489.689 210.771 468.701 212.289 467.693 212.334 466.816 212.373 448.015 213.053 438.322 213.404
+                                428.277 213.767 422.536 210.245 407.737 214.229 393.317 218.111 390.477 212.062 381.226 212.077 379.3 211.44
+                                377.766 210.981 374.519 210.872 371.312 210.795 368.683 210.668 366.926 210.58 366.565 210.561 366.344 210.703
+                                366.319 210.868 366.299 211 366.404 211.146 366.666 211.24 367.285 211.46 368.092 211.706 369.122 211.973
+                                369.942 212.176 370.856 212.491 371.844 212.858 361.446 214.11 348.69 216.408 348.008 216.433 347.223 216.461
+                                332.4 217.028 322.124 217.407 322.124 217.407 254 217.407 254 217.407 254 217.407 254 118.999 254 118.999
+                                254 118.999 442.631 118.999 442.631 118.999Z"/>
                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                  </Border>
+                  </Grid>
                   <ControlTemplate.Triggers>
                     <Trigger Property="IsMouseOver" Value="True">
-                      <Setter TargetName="Box" Property="Background" Value="#D3B062"/>
+                      <Setter TargetName="Strip" Property="Fill" Value="#8F6A49"/>
                     </Trigger>
                     <Trigger Property="IsPressed" Value="True">
-                      <Setter TargetName="Box" Property="Background" Value="#B08F47"/>
+                      <Setter TargetName="Strip" Property="Fill" Value="#755439"/>
                     </Trigger>
                     <Trigger Property="IsEnabled" Value="False">
-                      <Setter TargetName="Box" Property="Background" Value="#4D4433"/>
+                      <Setter TargetName="All" Property="Opacity" Value="0.4"/>
                       <Setter Property="Cursor" Value="Arrow"/>
                     </Trigger>
                   </ControlTemplate.Triggers>
@@ -457,16 +426,125 @@
               </Setter.Value>
             </Setter>
           </Style>
-          <Style x:Key="QuietLink" TargetType="Button">
+          <!-- a version in the bar: its name (cut short when it is longer than the bar, which stays 240 wide and clear of the wordmark)
+               and a mark in a place of 24 at the right (picked, or not on this PC yet) -->
+          <Style x:Key="Row" TargetType="Button">
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{StaticResource Ring}"/>
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                  <Border x:Name="Box" Background="Transparent" TextElement.Foreground="{TemplateBinding Foreground}">
+                    <ContentPresenter/>
+                  </Border>
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                      <Setter TargetName="Box" Property="TextElement.Foreground" Value="#FFFFFF"/>
+                    </Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+          <DataTemplate x:Key="VersionRow">
+            <Button Style="{StaticResource Row}" Foreground="{Binding Ink, Mode=OneTime}" ToolTip="{Binding Tip, Mode=OneTime}" Click="LauncherRowClick"
+                    AutomationProperties.Name="{Binding Label, Mode=OneTime}">
+              <Grid Height="40">
+                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="24"/></Grid.ColumnDefinitions>
+                <TextBlock Style="{StaticResource Line}" Text="{Binding Label, Mode=OneTime}" Margin="0,0,8,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           Foreground="{Binding (TextElement.Foreground), RelativeSource={RelativeSource AncestorType=Border}}"/>
+                <Canvas Grid.Column="1" Width="24" Height="24" VerticalAlignment="Center">
+                  <Path Data="M4.5,12.75 l6,6 l9,-13.5" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                        Visibility="{Binding Check, Mode=OneTime}"
+                        Stroke="{Binding (TextElement.Foreground), RelativeSource={RelativeSource AncestorType=Border}}"/>
+                  <Path Data="M3,16.5 v2.25 A2.25,2.25 0 0 0 5.25,21 h13.5 A2.25,2.25 0 0 0 21,18.75 V16.5 M16.5,12 L12,16.5 L7.5,12 M12,16.5 V3"
+                        StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                        Visibility="{Binding Fetch, Mode=OneTime}"
+                        Stroke="{Binding (TextElement.Foreground), RelativeSource={RelativeSource AncestorType=Border}}"/>
+                </Canvas>
+              </Grid>
+            </Button>
+          </DataTemplate>
+          <!-- the bar's own scroll bar: a thin thumb at its right edge, shown while the pointer is over the bar -->
+          <Style x:Key="SlimBar" TargetType="ScrollBar">
+            <Setter Property="Width" Value="6"/>
+            <Setter Property="MinWidth" Value="6"/>
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="ScrollBar">
+                  <Track x:Name="PART_Track" IsDirectionReversed="True">
+                    <Track.Thumb>
+                      <Thumb>
+                        <Thumb.Template>
+                          <ControlTemplate TargetType="Thumb">
+                            <Border CornerRadius="3" Background="#59FFFFFF"/>
+                          </ControlTemplate>
+                        </Thumb.Template>
+                      </Thumb>
+                    </Track.Thumb>
+                  </Track>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+          <Style x:Key="SlimScroll" TargetType="ScrollViewer">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="ScrollViewer">
+                  <Grid Background="Transparent">
+                    <ScrollContentPresenter CanContentScroll="{TemplateBinding CanContentScroll}"/>
+                    <ScrollBar x:Name="PART_VerticalScrollBar" Style="{StaticResource SlimBar}" HorizontalAlignment="Right" Margin="0,4,5,8" Opacity="0"
+                               Maximum="{TemplateBinding ScrollableHeight}" ViewportSize="{TemplateBinding ViewportHeight}"
+                               Value="{TemplateBinding VerticalOffset}" Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"/>
+                  </Grid>
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                      <Setter TargetName="PART_VerticalScrollBar" Property="Opacity" Value="1"/>
+                    </Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+          <!-- the window's buttons, as Windows 11 draws its own: 48 x 48, the close button red under the pointer -->
+          <Style x:Key="TitleButton" TargetType="Button">
+            <Setter Property="Width" Value="48"/>
+            <Setter Property="Height" Value="48"/>
+            <Setter Property="Background" Value="#0FFFFFFF"/>
+            <Setter Property="IsTabStop" Value="False"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template">
               <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                  <TextBlock x:Name="Text" Text="{TemplateBinding Content}" FontFamily="{DynamicResource Serif}" FontSize="12" Foreground="#6A645A"/>
+                  <Border x:Name="Box" Background="Transparent">
+                    <TextBlock Text="{TemplateBinding Content}" FontFamily="{StaticResource Icons}" FontSize="10" Foreground="#E6FFFFFF"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                  </Border>
                   <ControlTemplate.Triggers>
                     <Trigger Property="IsMouseOver" Value="True">
-                      <Setter TargetName="Text" Property="Foreground" Value="#B9AE98"/>
+                      <Setter TargetName="Box" Property="Background" Value="{Binding Background, RelativeSource={RelativeSource TemplatedParent}}"/>
+                    </Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+          <!-- a mark that opens a page (GitHub, Discord) -->
+          <Style x:Key="MarkButton" TargetType="Button">
+            <Setter Property="Width" Value="32"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{StaticResource Ring}"/>
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                  <Border x:Name="Box" Background="Transparent">
+                    <ContentPresenter/>
+                  </Border>
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                      <Setter TargetName="Box" Property="Opacity" Value="0.8"/>
                     </Trigger>
                   </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -475,62 +553,136 @@
           </Style>
         </Grid.Resources>
 
-        <!-- the frame and its corners -->
-        <Border Margin="9" CornerRadius="11" BorderBrush="#352F27" BorderThickness="1.5" IsHitTestVisible="False"/>
-        <Path Style="{StaticResource Corner}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="30,40,0,0"/>
-        <Path Style="{StaticResource Corner}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,40,30,0">
-          <Path.RenderTransform><ScaleTransform ScaleX="-1"/></Path.RenderTransform>
-        </Path>
-        <Path Style="{StaticResource Corner}" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="30,0,0,32">
-          <Path.RenderTransform><ScaleTransform ScaleY="-1"/></Path.RenderTransform>
-        </Path>
-        <Path Style="{StaticResource Corner}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,30,32">
-          <Path.RenderTransform><ScaleTransform ScaleX="-1" ScaleY="-1"/></Path.RenderTransform>
-        </Path>
+        <!-- the picture of the game, dim behind everything (it covers the window, cut evenly at the sides) -->
+        <Image Source="pack://application:,,,/Images/launcher.jpg" Stretch="UniformToFill" Opacity="0.12" HorizontalAlignment="Center"
+               VerticalAlignment="Center" IsHitTestVisible="False" RenderOptions.BitmapScalingMode="HighQuality"/>
 
-        <!-- the wordmark -->
-        <StackPanel VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,96,0,0" IsHitTestVisible="False">
-          <!-- (the glow: the same outlines blurred behind them, as the drawing's own) -->
-          <Viewbox Width="500" HorizontalAlignment="Center">
-            <Grid Width="826" Height="112">
+        <!-- the wordmark (its glow: the same letters blurred over them, as the drawing's own) and what the game is -->
+        <Grid VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,99,0,0" IsHitTestVisible="False">
+          <Viewbox Width="416">
+            <Canvas Width="561.741" Height="86.14">
               <Path Data="{StaticResource Wordmark}" Fill="#C09E52">
-                <Path.Effect><BlurEffect Radius="19" KernelType="Gaussian"/></Path.Effect>
+                <Path.RenderTransform><TranslateTransform X="-131.803" Y="-12.673"/></Path.RenderTransform>
               </Path>
-              <Path Data="{StaticResource Wordmark}" Fill="#C09E52"/>
-            </Grid>
+            </Canvas>
           </Viewbox>
-          <TextBlock Text="Ocarina of Time Recomp" FontFamily="{DynamicResource Serif}" FontSize="19" Foreground="#ECE7DC"
-                     HorizontalAlignment="Center" Margin="0,22,0,0"/>
+          <Viewbox Width="416">
+            <Viewbox.Effect><BlurEffect Radius="19" KernelType="Gaussian"/></Viewbox.Effect>
+            <Canvas Width="561.741" Height="86.14">
+              <Path Data="{StaticResource Wordmark}" Fill="#C09E52">
+                <Path.RenderTransform><TranslateTransform X="-131.803" Y="-12.673"/></Path.RenderTransform>
+              </Path>
+            </Canvas>
+          </Viewbox>
+        </Grid>
+        <TextBlock Style="{StaticResource Line}" Text="Ocarina of Time Remake Recomp" Foreground="#CFCFCF" VerticalAlignment="Top"
+                   HorizontalAlignment="Center" Margin="0,181,0,0" IsHitTestVisible="False"/>
+
+        <!-- the button that plays the version picked, the version under it (pressed: its folder) and a line when there is one to say -->
+        <Button x:Name="LauncherGo" Style="{StaticResource PlayButton}" Width="257" Height="98" VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                Margin="0,0,0,91" IsDefault="True" Click="LauncherGoClick" AutomationProperties.Name="{Binding Text, ElementName=LauncherGoText}">
+          <TextBlock x:Name="LauncherGoText" Text="Play" FontFamily="{DynamicResource Serif}" FontSize="44" Foreground="#37291D">
+            <TextBlock.RenderTransform><TranslateTransform x:Name="LauncherGoNudge"/></TextBlock.RenderTransform>
+          </TextBlock>
+        </Button>
+        <Button x:Name="LauncherVersion" Style="{StaticResource Pill}" Background="Transparent" Padding="42,8" VerticalAlignment="Bottom"
+                HorizontalAlignment="Center" Margin="0,0,0,38" ToolTip="Open the game folder" Click="LauncherFolderClick"/>
+        <TextBlock x:Name="LauncherStatus" FontFamily="Segoe UI" FontSize="13" Foreground="#BCBCBC" VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                   TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="620" Margin="0,0,0,17" IsHitTestVisible="False"/>
+
+        <Button x:Name="LauncherAll" Style="{StaticResource Pill}" Content="All Versions" VerticalAlignment="Bottom" HorizontalAlignment="Left"
+                Margin="24,0,0,38" Click="LauncherAllClick"/>
+
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="0,0,24,40">
+          <Button Style="{StaticResource MarkButton}" ToolTip="Longshot on GitHub" AutomationProperties.Name="Longshot on GitHub" Tag="https://github.com/madebyjordan/longshot" Click="LauncherLinkClick">
+            <Canvas Width="32" Height="32">
+              <Path Fill="#FFFFFF" Data="M8 7.757C7.866 7.757 7.757 7.866 7.757 8 7.757 8.107 7.827 8.198 7.923 8.231 7.935 8.232 7.94 8.225 7.94 8.218
+                    7.94 8.213 7.94 8.194 7.94 8.173 7.879 8.184 7.863 8.159 7.858 8.145 7.855 8.138 7.844 8.117 7.833 8.111 7.825 8.106 7.813 8.095
+                    7.832 8.095 7.852 8.094 7.865 8.112 7.87 8.12 7.892 8.156 7.927 8.146 7.941 8.139 7.943 8.123 7.949 8.113 7.957 8.107 7.902 8.101
+                    7.846 8.08 7.846 7.987 7.846 7.96 7.855 7.939 7.871 7.922 7.868 7.916 7.86 7.891 7.873 7.858 7.873 7.858 7.894 7.851 7.94 7.882
+                    7.96 7.877 7.98 7.875 8.001 7.875 8.022 7.875 8.041 7.877 8.061 7.882 8.107 7.851 8.128 7.858 8.128 7.858 8.141 7.891 8.133 7.916
+                    8.131 7.922 8.146 7.939 8.155 7.96 8.155 7.987 8.155 8.08 8.099 8.101 8.044 8.107 8.054 8.115 8.061 8.129 8.061 8.152 8.061 8.184
+                    8.06 8.211 8.06 8.218 8.06 8.225 8.065 8.232 8.077 8.231 8.173 8.198 8.243 8.107 8.243 8 8.243 7.866 8.134 7.757 8 7.757Z">
+                <Path.RenderTransform>
+                  <TransformGroup>
+                    <ScaleTransform ScaleX="64" ScaleY="64"/>
+                    <TranslateTransform X="-496" Y="-496"/>
+                  </TransformGroup>
+                </Path.RenderTransform>
+              </Path>
+            </Canvas>
+          </Button>
+          <!-- (the server Longshot's CONTRIBUTING.md names) -->
+          <Button Style="{StaticResource MarkButton}" Margin="10,0,0,0" ToolTip="Discord" AutomationProperties.Name="Discord" Tag="https://discord.gg/EajnD2AJD9" Click="LauncherLinkClick">
+            <Canvas Width="32" Height="32">
+              <Ellipse Canvas.Left="0.154" Canvas.Top="0.154" Width="31.692" Height="31.692" Fill="#5865F2"/>
+              <Path Fill="#FFFFFF" Data="M517.491 506.955a13.067 13.067 0 0 0-3.225-1 0.049 0.049 0 0 0-0.052 0.024 9.102 9.102 0 0 0-0.403 0.826
+                    12.063 12.063 0 0 0-3.622 0 8.349 8.349 0 0 0-0.408-0.826 0.051 0.051 0 0 0-0.052-0.024A13.03 13.03 0 0 0 506.505 506.955a0.046 0.046
+                    0 0 0-0.022 0.019c-2.054 3.069-2.617 6.063-2.341 9.019a0.054 0.054 0 0 0 0.021 0.037 13.141 13.141 0 0 0 3.957 2 0.051 0.051 0 0 0
+                    0.056-0.018 9.392 9.392 0 0 0 0.809-1.317 0.05 0.05 0 0 0-0.027-0.069 8.654 8.654 0 0 1-1.236-0.589 0.051 0.051 0 0 1-0.005-0.084c0.083-0.062
+                    0.166-0.127 0.245-0.192a0.049 0.049 0 0 1 0.051-0.007c2.593 1.184 5.401 1.184 7.964 0a0.049 0.049 0 0 1 0.052 0.006c0.079 0.065 0.162
+                    0.131 0.247 0.193a0.051 0.051 0 0 1-0.004 0.084 8.12 8.12 0 0 1-1.238 0.589 0.05 0.05 0 0 0-0.027 0.07 10.545 10.545 0 0 0 0.809
+                    1.316 0.05 0.05 0 0 0 0.055 0.019 13.097 13.097 0 0 0 3.962-2.001 0.051 0.051 0 0 0 0.021-0.036c0.33-3.418-0.553-6.387-2.343-9.019a0.04
+                    0.04 0 0 0-0.02-0.02zM509.372 514.193c-0.781 0-1.424-0.717-1.424-1.597s0.631-1.597 1.424-1.597c0.799 0 1.437 0.723 1.424 1.597 0.001
+                    0.88-0.63 1.597-1.424 1.597z m5.266 0c-0.781 0-1.424-0.717-1.424-1.597s0.631-1.597 1.424-1.597c0.799 0 1.437 0.723 1.423 1.597 0 0.88-0.624
+                    1.597-1.423 1.597z">
+                <Path.RenderTransform><TranslateTransform X="-496" Y="-496"/></Path.RenderTransform>
+              </Path>
+            </Canvas>
+          </Button>
         </StackPanel>
 
-        <!-- the version, and the button that plays it -->
-        <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,38">
-          <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-            <ComboBox x:Name="LauncherVersions" Style="{StaticResource VersionPick}" Width="270" Height="50" VerticalAlignment="Center"
-                      SelectionChanged="LauncherVersionChanged">
-              <ComboBox.ItemTemplate>
-                <DataTemplate>
-                  <TextBlock FontFamily="{DynamicResource Serif}">
-                    <Run Text="{Binding Label, Mode=OneWay}"/>
-                    <Run Text="{Binding Badge, Mode=OneWay}" Foreground="{Binding BadgeBrush, Mode=OneWay}"/>
-                  </TextBlock>
-                </DataTemplate>
-              </ComboBox.ItemTemplate>
-            </ComboBox>
-            <Button x:Name="LauncherGo" Style="{StaticResource GoldButton}" Width="220" Height="76" Margin="40,0,0,0" Click="LauncherGoClick">
-              <TextBlock x:Name="LauncherGoText" Text="Play" FontFamily="{DynamicResource Serif}" FontSize="32" Foreground="#16140F" Margin="0,0,0,3"/>
-            </Button>
-          </StackPanel>
-          <TextBlock x:Name="LauncherStatus" FontFamily="{DynamicResource Serif}" FontSize="13" Foreground="#8F887B" HorizontalAlignment="Center"
-                     TextAlignment="Center" Margin="0,16,0,0" MinHeight="18"/>
-          <Button x:Name="LauncherFolder" Style="{StaticResource QuietLink}"
-                  HorizontalAlignment="Center" Margin="0,6,0,0" Content="Open the game folder" Click="LauncherFolderClick"/>
+        <!-- All Versions: what is on this PC and what is not, picked by a press. Anywhere else in the window closes it -->
+        <Border x:Name="VersionBar" Visibility="Collapsed" HorizontalAlignment="Left" Width="240" Background="#B0000000"
+                BorderBrush="#303030" BorderThickness="0,0,1,0" MouseLeftButtonDown="LauncherBarClick">
+          <Border.RenderTransform><TranslateTransform x:Name="VersionBarSlide"/></Border.RenderTransform>
+          <ScrollViewer Style="{StaticResource SlimScroll}" Margin="0,48,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="24,16,24,64">
+              <TextBlock Style="{StaticResource Line}" Text="All Versions"/>
+              <Button x:Name="LauncherCheck" Style="{StaticResource Pill}" Background="{StaticResource Leather}" Content="Check for updates"
+                      MinWidth="176" HorizontalAlignment="Left" Margin="0,12,0,0" Click="LauncherCheckClick"/>
+              <StackPanel x:Name="NewVersions" Margin="0,40,0,0" Visibility="Collapsed">
+                <TextBlock Style="{StaticResource Line}" Text="Update available"/>
+                <ItemsControl x:Name="NewList" ItemTemplate="{StaticResource VersionRow}" Margin="0,12,0,0" Focusable="False"/>
+              </StackPanel>
+              <StackPanel x:Name="HereVersions" Margin="0,40,0,0" Visibility="Collapsed">
+                <TextBlock Style="{StaticResource Line}" Text="Installed"/>
+                <ItemsControl x:Name="HereList" ItemTemplate="{StaticResource VersionRow}" Margin="0,12,0,-4" Focusable="False">
+                  <ItemsControl.ItemContainerStyle>
+                    <Style TargetType="ContentPresenter"><Setter Property="Margin" Value="0,0,0,4"/></Style>
+                  </ItemsControl.ItemContainerStyle>
+                </ItemsControl>
+              </StackPanel>
+              <StackPanel x:Name="OtherVersions" Margin="0,40,0,0" Visibility="Collapsed">
+                <TextBlock x:Name="OtherTitle" Style="{StaticResource Line}" Text="Older versions"/>
+                <ItemsControl x:Name="OtherList" ItemTemplate="{StaticResource VersionRow}" Margin="0,12,0,-12" Focusable="False">
+                  <ItemsControl.ItemContainerStyle>
+                    <Style TargetType="ContentPresenter"><Setter Property="Margin" Value="0,0,0,12"/></Style>
+                  </ItemsControl.ItemContainerStyle>
+                </ItemsControl>
+              </StackPanel>
+            </StackPanel>
+          </ScrollViewer>
+        </Border>
+
+        <!-- the window's name, at the left of its top 48, over the bar of versions as the drawing has it -->
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Left" Height="48" Margin="16,0,0,0" IsHitTestVisible="False">
+          <Image Source="pack://application:,,,/Images/longshot.png" Width="16" Height="16" VerticalAlignment="Center"
+                 RenderOptions.BitmapScalingMode="HighQuality"/>
+          <TextBlock Text="Longshot" FontFamily="Segoe UI" FontSize="12" Foreground="#E6FFFFFF" Margin="16,0,0,2" VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- the launcher's own window buttons (it can be maximised: everything in it holds to an edge or the middle) -->
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" WindowChrome.IsHitTestVisibleInChrome="True">
+          <Button Style="{StaticResource TitleButton}" Content="&#xE921;" ToolTip="Minimize" AutomationProperties.Name="Minimize" Click="Minimize"/>
+          <Button x:Name="LauncherMax" Style="{StaticResource TitleButton}" Content="&#xE922;" ToolTip="Maximize" AutomationProperties.Name="Maximize" Click="LauncherMaxClick"/>
+          <Button Style="{StaticResource TitleButton}" Background="#C42B1C" Content="&#xE8BB;" ToolTip="Close" AutomationProperties.Name="Close" Click="CloseWindow"/>
         </StackPanel>
       </Grid>
     </Border>
 
-    <!-- the window's own buttons, over everything -->
-    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0" Panel.ZIndex="9"
+    <!-- the installer's window buttons, over its pages (the launcher has its own) -->
+    <StackPanel x:Name="CaptionButtons" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0" Panel.ZIndex="9"
                 WindowChrome.IsHitTestVisibleInChrome="True">
       <Button Style="{StaticResource Caption}" Click="Minimize" ToolTip="Minimize">
         <Rectangle Width="10" Height="1" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
