@@ -5,10 +5,10 @@
 #   powershell -File scripts/build-game.ps1 -Channel release   Longshot\game: the published release, built by the installed
 #                                                               Longshot Builder's own tools, as its Update does ("v1.0.0")
 #   powershell -File scripts/build-game.ps1 -Channel dev       Longshot\game-dev: Longshot\worktrees\dev as it is checked
-#                                                               out, with AMD FSR 4 ("dev 86148ce")
+#                                                               out, with AMD FSR 4 ("pre-1.1.0 6353e9b")
 # Options: -Longshot <folder> (the folder holding game\; found from this script's place when left out), -Jobs <n>.
 #
-# Which build is running: the window's title ("Longshot - dev 86148ce"), the start-up screen, the Insert menu's heading and
+# Which build is running: the window's title ("Longshot - pre-1.1.0 6353e9b"), the start-up screen, the Insert menu's heading and
 # the log's first line. A release says its tag ("v1.0.0"); anything else its branch and commit.
 #
 # dev, the first time: game-dev is made from game\'s own game files (hard links), its saves and settings copied from game\

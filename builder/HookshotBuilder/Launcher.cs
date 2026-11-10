@@ -9,7 +9,7 @@ using System.Windows.Media.Animation;
 namespace HookshotBuilder;
 
 /// One row of the launcher's version list: a release (played in the launch folder, which is updated or built again to it
-/// first when it holds another), or a dev build in a folder beside it (nx2/version.py names it "dev 86148ce";
+/// first when it holds another), or a dev build in a folder beside it (nx2/version.py names it "pre-1.1.0 6353e9b";
 /// scripts/build-game.ps1 makes one and writes its hookshot_build.txt)
 sealed class LaunchChoice
 {
@@ -18,7 +18,7 @@ sealed class LaunchChoice
     public Brush BadgeBrush { get; init; } = Brushes.Gray;
     public string? Tag { get; init; }      // (a release's tag, v1.0.0)
     public string? Folder { get; init; }   // (a dev build's folder)
-    public string? Build { get; init; }    // (a dev build's name, "dev 86148ce")
+    public string? Build { get; init; }    // (a dev build's name, "pre-1.1.0 6353e9b")
     public string Key => Tag != null ? "release:" + Tag : "dev:" + Folder;
 }
 
@@ -69,14 +69,19 @@ public partial class MainWindow
                 BadgeBrush = SameTag(tag, latest) ? LatestInk : QuietInk,
             });
         foreach (var (dir, build) in DevBuilds(launchFolder))
+        {
+            // ("pre-1.1.0 6353e9b", nx2/version.py: dev is the next release before it is out; an older build said "dev 86148ce")
+            var space = build.IndexOf(' ');
+            var (name, commit) = space > 0 ? (build[..space], build[(space + 1)..]) : (build, "");
             launchChoices.Add(new LaunchChoice
             {
                 Folder = dir,
                 Build = build,
-                Label = "Dev build",
-                Badge = build.StartsWith("dev ") ? build[4..] : build,
+                Label = name.StartsWith("pre-") ? "Version " + name : "Dev build",
+                Badge = commit,
                 BadgeBrush = DevInk,
             });
+        }
         var keep = (LauncherVersions.SelectedItem as LaunchChoice)?.Key ?? LastChoice(launchFolder);
         LauncherVersions.ItemsSource = null;
         LauncherVersions.ItemsSource = launchChoices;

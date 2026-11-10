@@ -1253,7 +1253,7 @@ static int game_main(int argc, char **argv) {
         }
     }
     hos_log("hookshot %s", HOOKSHOT_VERSION);   /* (the log's first line: which build a report comes from) */
-    {   /* (longshot) the build's name without its fingerprint ("v1.0.0", "dev 86148ce") for the window's title (display.c), so a
+    {   /* (longshot) the build's name without its fingerprint ("v1.0.0", "pre-1.1.0 6353e9b") for the window's title (display.c), so a
            release and a dev build are told apart at a glance. An environment variable: display.c is compiled alone in tests */
         static char build[128];
         snprintf(build, sizeof build, "HOS_BUILD_NAME=%s", HOOKSHOT_VERSION);

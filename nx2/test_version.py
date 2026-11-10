@@ -69,12 +69,21 @@ def checkout():
             f.write("not committed\n")
         assert version.release(repo) == "dev %s-dirty" % sha, version.release(repo)
         git("checkout", "-q", "--", ".")
+        with open(os.path.join(repo, "CHANGELOG.md"), "w", encoding="utf-8") as f:
+            f.write("# Changelog\n\n## 1.1.0 (unreleased)\n\n## 1.0.0 (2026-11-10)\n")
+        git("add", "CHANGELOG.md")
+        git("commit", "-q", "-m", "changelog")
+        sha = git("rev-parse", "--short=7", "HEAD")
+        assert version.release(repo) == "pre-1.1.0 " + sha, "dev is the next release before it is out: " + version.release(repo)
+        git("checkout", "-q", "-b", "feature")
+        assert version.release(repo) == "feature " + sha, version.release(repo)
+        git("checkout", "-q", "dev")
         git("tag", "v1.0.0")
         assert version.release(repo) == "v1.0.0", version.release(repo)
         with open(os.path.join(repo, "untracked.txt"), "w") as f:
             f.write("a file git does not know\n")
         assert version.release(repo) == "v1.0.0", "an untracked file is not a change to the build"
-        git("checkout", "-q", "--detach", "HEAD~1")
+        git("checkout", "-q", "--detach", "HEAD~2")
         assert version.release(repo).startswith("v2.0.6"), version.release(repo)
 
 

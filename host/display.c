@@ -292,7 +292,7 @@ static DWORD WINAPI display_main(void *p) {
     RECT r = {0, 0, win_w, win_h};
     AdjustWindowRect(&r, WS_OVERLAPPEDWINDOW, FALSE);
     const int noactivate = getenv("HOS_WINDOW_NOACTIVATE") != NULL;
-    /* (longshot) "Longshot - dev 86148ce": which build this is, in the title and the taskbar (HOS_BUILD_NAME, hos_main.c) */
+    /* (longshot) "Longshot - pre-1.1.0 6353e9b": which build this is, in the title and the taskbar (HOS_BUILD_NAME, hos_main.c) */
     char title[160];
     const char *build = getenv("HOS_BUILD_NAME");
     if (build && *build && strcmp(build, "unknown")) snprintf(title, sizeof title, "%s - %s", HOS_GAME_TITLE, build);

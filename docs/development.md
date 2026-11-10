@@ -46,7 +46,7 @@ The built game's own arguments (`image.bin`, `--romfs`, `--user`, `--trace`, `--
 Update does: the published release. `-Channel dev` builds `Longshot\game-dev` from `Longshot\worktrees\dev` (the dev
 branch as checked out), with AMD FSR 4. They share the game files (hard links) and keep their own caches, saves and
 settings, so switching costs nothing. The window's title, the start-up screen, the Insert menu and the log's first line
-say which one runs: a release its tag (`v1.0.0`), any other build its branch and commit (`dev 86148ce`).
+say which one runs: a release its tag (`v1.0.0`), a dev build the release it is heading for and its commit (`pre-1.1.0 6353e9b`), any other its branch and commit.
 
 Opening `Longshot.exe` in `game` shows the launcher (the Longshot Builder in launch mode, `builder/HookshotBuilder/Launcher.cs`):
 a version list with the published releases and every dev build in a folder beside `game` (its `hookshot_build.txt` says
