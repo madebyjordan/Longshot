@@ -46,6 +46,7 @@ struct { int device = 1; } dev;
 int pcache = 2;
 std::string pcache_path;
 std::atomic<int64_t> pcache_built_since_save{32};
+static bool cache_readonly() { return false; }   // (longshot: vk_paths.h, RX_VK_CACHE_READONLY)
 enum Fault { NONE, VECTOR_ALLOC, VECTOR_LENGTH, TMP_ALLOC, QUERY_FAIL, EMPTY, COPY_FAIL, SHORT_WRITE, BLOCK_COPY };
 std::atomic<Fault> fault{NONE};
 std::atomic<int> queries{0}, copies{0}, writes{0}, replacements{0}, save_errors{0}, start_errors{0};

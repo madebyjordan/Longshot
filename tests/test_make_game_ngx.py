@@ -58,27 +58,17 @@ class NgxRuntimeTests(unittest.TestCase):
         with mock.patch.object(make_game, "LINUX", platform == "linux"), mock.patch.dict(os.environ, env):
             return make_game.ngx_built()
 
-    def test_jitter_only_in_a_build_with_the_sdk(self):
-        # (make_game sets OOT_DLSS_JITTER=1 for the lift only then: nx2/oot_jitter.py)
+    def test_built_with_this_platforms_library(self):
+        # (the camera jitter is no longer tied to this: nx2/oot_jitter.py is in every standalone lift, for FSR 3.1 as well)
         self.assertFalse(self.built("linux", sdk=""))
         self.assertFalse(self.built("linux"))   # (no library yet)
         self.sdk_files("linux", runtime=False)
         self.assertTrue(self.built("linux"))
         self.assertFalse(self.built("windows"))   # (another platform's library only)
-        import sys
-        sys.path.insert(0, str(ROOT / "nx2"))
-        try:
-            import oot_jitter
-        finally:
-            sys.path.pop(0)
-        with mock.patch.dict(os.environ, {"OOT_DLSS_JITTER": "1"}):
-            self.assertTrue(oot_jitter.wanted())
-        with mock.patch.dict(os.environ, {}, clear=True):
-            self.assertFalse(oot_jitter.wanted())
 
-    def test_fsr_build_and_its_jitter(self):
-        """--fsr: HOOKSHOT_FSR=1 for nx2/build.py and the camera jitter in the lift; an --update of that folder keeps it (its
-        mark), --no-fsr takes it out"""
+    def test_fsr_build(self):
+        """--fsr: HOOKSHOT_FSR=1 for nx2/build.py; an --update of that folder keeps it (its mark), --no-fsr takes it out. (The
+        camera jitter FSR 4 needs is in every build: nx2/lift.py)"""
         out = str(self.out)
         mark = self.out / make_game.FSR_MARK
         plain = SimpleNamespace(fsr=False, no_fsr=False, update=None)
@@ -90,9 +80,6 @@ class NgxRuntimeTests(unittest.TestCase):
         self.assertTrue(make_game.fsr_wanted(update, out))
         self.assertFalse(make_game.fsr_wanted(SimpleNamespace(fsr=False, no_fsr=True, update=out), out))
         self.assertFalse(make_game.fsr_wanted(plain, out))   # (a new build without --fsr: the mark is for --update only)
-        source = (ROOT / "nx2" / "make_game.py").read_text(encoding="utf-8")
-        if 'if ngx_built() or os.environ.get("HOOKSHOT_FSR") == "1":' not in source:
-            self.fail("make_game.py: the camera jitter (OOT_DLSS_JITTER) is not in a build with FSR")
 
     def test_linux_runtime(self):
         self.sdk_files("linux")
@@ -140,6 +127,22 @@ class FetchGateTests(unittest.TestCase):
             a = make_game.parse_args()
         self.assertFalse(a.fetch_ngx_sdk)
         self.assertFalse(a.accept_nvidia_license)
+
+
+class NoScriptTests(unittest.TestCase):
+    """The AppImage carries no scripts/ (scripts/linux/appimage.sh): with HOOKSHOT_NGX_SDK set there, ngx_script() says so and
+    stops, not a FileNotFoundError traceback from importlib"""
+
+    def test_missing_script_is_said_plainly(self):
+        with tempfile.TemporaryDirectory(prefix="hookshot-no-scripts-") as root, mock.patch.object(make_game, "ROOT", root), \
+                mock.patch.dict(os.environ, {"HOOKSHOT_NGX_SDK": os.path.join(root, "sdk")}), \
+                mock.patch("sys.stdout", io.StringIO()) as out:
+            with self.assertRaises(SystemExit) as stopped:
+                make_game.place_ngx_runtime(os.path.join(root, "game"))
+        self.assertEqual(stopped.exception.code, 1)
+        self.assertIn("@@error", out.getvalue())
+        self.assertIn("ngx_sdk.py", out.getvalue())
+        self.assertIn("Unset HOOKSHOT_NGX_SDK", out.getvalue())
 
 
 if __name__ == "__main__":

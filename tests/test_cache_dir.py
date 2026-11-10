@@ -108,7 +108,7 @@ class CacheDirTests(unittest.TestCase):
         self.assertIn("cache_readonly()", block(draw, "void state_record(const Program& p, const NvnState& s, const Targets& at, VkPrimitiveTopology topo, const uint8_t color_types[8]) {"))
         # (the prepare's file and marker)
         prep = block(draw, "bool prepare_run(")
-        self.assertLess(prep.index("if (ro) return true;"), prep.rindex('fopen(path.c_str(), "wb")'))
+        self.assertIn("cache_readonly()", block(draw, "void prepared_write(").split("\n")[1])
         self.assertIn("&& !ro", prep)
         # (the precompile's marker, and the notes it drops after two failed starts)
         pre = block(draw, "void precompile_run(")

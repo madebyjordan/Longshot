@@ -46,6 +46,8 @@ struct DrawArgs {
 
 /// A recording starts (its slot's descriptor pool and upload stream are reset); value: the timeline value it signals
 void draw_begin_recording(int slot, VkCommandBuffer cmd, uint64_t value);
+/// Publish CPU writes from this slot's used streams before its commands reach the GPU (also for worker slots).
+void draw_flush_recording(int slot);
 /// The recording's stream still holds [at, at + n) in the mapping at base (a reset starts used over)
 bool stream_holds(const uint8_t* base, uint64_t at, uint64_t n);
 /// The open render pass ends (before transfers, clears, barriers and the recording's end)
@@ -59,11 +61,17 @@ void clear_stats(int64_t* clears, int64_t* masked);
 /// indirect: the workgroup counts' GPU address (x, y, z unused)
 void dispatch(VkCommandBuffer cmd, NvnState& s, uint32_t x, uint32_t y, uint32_t z, uint64_t indirect);
 void dry_mark_written(NvnState& s, bool compute, bool first);   // (hookshot: the parallel replay's dry pass)
+void dry_marks_begin();   // (at the start of each dry pass: the last targets it skipped by are forgotten)
 void draw_stats(int64_t* draws, int64_t* skipped, int64_t* dispatches, int64_t* pipelines);
 void draw_stats2(int64_t* passes, int64_t* mesh, double* pipeline_ms);
 void draw_stats3(int64_t* pending_skips, int64_t* waits, double* wait_ms);
+/// (hookshot) pipelines linked from stage libraries in the draw, and the libraries asked of the driver for them: had, and cold;
+/// of the cold, those a worker has built since, and the workers' time in them. False: no stage libraries (RX_VK_GPL)
+bool draw_stats4(int64_t* links, double* link_ms, int64_t* lib_hits, int64_t* lib_cold, int64_t* lib_built, double* lib_build_ms);
 void draw_skip_report(double frames);   // (hookshot) skips by the line that made them
 int64_t draw_desc_reused();
+/// (RX_VK_DESC_SLOTGEN) Of those, the reuses the global registrations' generation check would have rebuilt for
+int64_t draw_slotgen_saves();
 /// RX_VK_FLASH_RECORD=<key>,...: the last frames' draws of those programs, written to the log for frames around a flash
 void draw_records_log(uint64_t frame_lo, uint64_t frame_hi);
 void pass_traces_log(uint64_t frame_lo, uint64_t frame_hi);   // (RX_VK_PASS_TRACE=1)
