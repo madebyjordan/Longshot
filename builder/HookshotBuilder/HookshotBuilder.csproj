@@ -24,7 +24,7 @@
     <DebugType>none</DebugType>
   </PropertyGroup>
 
-  <!-- Inter, Cinzel and Marcellus (SIL Open Font License, Fonts/*-LICENSE.txt) and the hookshot, inside the app -->
+  <!-- Inter and Marcellus (SIL Open Font License, Fonts/*-LICENSE.txt) and the hookshot, inside the app -->
   <ItemGroup>
     <Resource Include="Fonts\*.ttf" />
     <Resource Include="Images\longshot.png" />

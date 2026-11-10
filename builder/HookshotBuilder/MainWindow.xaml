@@ -336,11 +336,6 @@
       </Border.Background>
       <Grid>
         <Grid.Resources>
-          <LinearGradientBrush x:Key="Gold" StartPoint="0,0" EndPoint="0,1">
-            <GradientStop Color="#F4D684" Offset="0"/>
-            <GradientStop Color="#D7B05A" Offset="0.5"/>
-            <GradientStop Color="#B38A3C" Offset="1"/>
-          </LinearGradientBrush>
           <FontFamily x:Key="Serif">pack://application:,,,/Fonts/#Marcellus</FontFamily>
           <!-- a corner's flourish: a bar that ends in a curl (drawn for the top left, turned for the other corners) -->
           <Style x:Key="Corner" TargetType="Path">
@@ -354,19 +349,19 @@
                     C95,40.5 71.5,19.5 65,17 C58.5,14.5 41.5,35 36,55 C30.5,75 64.5,70.5 68.5,61.5 C71.7,54.3 59.1667,49.8333 52.5,48.5
                     C55.5,47 64.2,44.2 75,45 C85.8,45.8 87.1667,66.6667 86.5,77 L52.5,84.5 L22.5,61.5 L0,72.5 L25,24.5 Z"/>
           </Style>
-          <!-- the wordmark's ends: an arrowhead and a notch, as on the logo -->
-          <Style x:Key="Tip" TargetType="Path">
-            <Setter Property="Width" Value="84"/>
-            <Setter Property="Height" Value="74"/>
-            <Setter Property="Stretch" Value="Uniform"/>
-            <Setter Property="Fill" Value="{StaticResource Gold}"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
-            <Setter Property="Data" Value="M0,35 L62,0 L80,11 L66,35 L80,59 L62,70 Z"/>
-            <Setter Property="Effect">
-              <Setter.Value><DropShadowEffect Color="#E9B44C" BlurRadius="18" ShadowDepth="0" Opacity="0.5"/></Setter.Value>
-            </Setter>
-          </Style>
+          <!-- the wordmark, as drawn (LONGSHOT and its two arrowheads, 826 x 112) -->
+          <GeometryGroup x:Key="Wordmark" FillRule="Nonzero">
+            <PathGeometry FillRule="EvenOdd" Figures="M173.946 88.3678L184.037 62.7213L188.356 51.7414V65.7597V96.7783H131.803L141.455 88.3678V23.3899L131.803 14.9794H171.499L161.711 23.3899V88.3678H173.946Z"/>
+            <PathGeometry FillRule="EvenOdd" Figures="M231.022 12.809C252.366 12.809 266.912 30.9865 266.912 55.9467C266.912 80.7712 252.366 98.8131 231.022 98.8131C209.407 98.8131 194.997 80.7712 194.997 55.9467C194.997 30.9865 209.407 12.809 231.022 12.809ZM231.022 89.7243C241.082 89.7243 246.656 79.8216 246.656 55.6754C246.656 31.6648 241.082 21.7621 231.022 21.7621C220.826 21.7621 215.253 31.6648 215.253 55.6754C215.253 79.8216 220.826 89.7243 231.022 89.7243ZM222.866 56.218L231.022 43.3309L239.043 56.218L231.022 68.5624L222.866 56.218Z"/>
+            <PathGeometry FillRule="EvenOdd" Figures="M278.463 88.3678L268.811 96.7783H300.758L291.106 88.3678V43.4666L331.89 98.8131V85.1587C331.663 84.1369 331.443 83.0983 331.306 82.3266C331.01 80.655 328.987 78.9497 328.014 78.1293C327.702 77.8656 327.497 77.693 327.493 77.6429C327.481 77.4484 327.445 71.5092 330.385 69.0587C332.28 67.4791 331.412 66.4017 330.444 65.1998C329.91 64.5371 329.345 63.8364 329.197 62.9928C328.921 61.4286 329.66 60.1656 330.329 59.0214C330.881 58.076 331.387 57.2118 331.234 56.3256C331.311 54.7116 331.41 51.9399 331.456 50.6233C331.464 50.4 331.471 50.2185 331.475 50.0917C331.479 49.984 331.482 49.9157 331.483 49.8946C331.485 49.8503 331.483 49.5963 331.48 49.2057C331.47 47.8985 331.449 45.0608 331.527 43.4304C331.577 42.403 331.737 40.9249 331.89 39.6512V23.3899L341.678 14.9794H308.779L318.296 23.3899V49.8423L293.145 14.9794H268.811L278.463 23.3899V88.3678Z"/>
+            <PathGeometry FillRule="EvenOdd" Figures="M415.47 50.7919L405.275 59.2024V98.8131L397.526 95.1505C397.526 95.1505 391.544 98.8131 380.396 98.8131C356.47 98.8131 343.555 82.6704 343.555 55.9467C343.555 27.7308 356.062 12.809 380.396 12.809C389.777 12.809 397.39 17.5568 397.39 17.5568L405.275 12.6733V46.451C400.788 38.0405 392.36 21.7621 380.532 21.7621C368.705 21.7621 363.947 33.157 363.947 55.6754C363.947 79.5503 369.249 89.7243 379.309 89.7243C384.203 89.7243 387.058 87.1469 387.058 87.1469V59.0667L377.27 50.7919H415.47Z"/>
+            <PathGeometry FillRule="EvenOdd" Figures="M450.892 46.5866C461.36 52.0127 471.148 58.5241 471.148 74.2599C471.148 89.0461 458.233 98.8131 443.415 98.8131C435.394 98.8131 429.82 96.7783 424.518 93.387L417.585 98.8131L417.449 62.7293C426.422 81.8564 433.899 89.3174 442.599 89.3174C448.989 89.3174 454.97 84.8408 454.97 77.7868C454.97 70.1903 447.357 65.985 438.385 61.2372C428.597 56.0823 418.537 49.978 418.537 35.5987C418.537 21.0838 429.412 12.9446 444.095 12.9446C450.076 12.9446 455.786 14.4368 460.136 17.4212L466.526 12.809V42.2457C461.632 27.3239 453.339 22.3047 445.182 22.3047C437.705 22.3047 433.491 25.2891 433.491 30.9865C433.491 37.9048 441.919 42.1101 450.892 46.5866Z"/>
+            <PathGeometry FillRule="EvenOdd" Figures="M543.109 23.3899V88.3678L552.761 96.7783H514.968L524.484 88.3678V59.6093H502.461V88.3678L512.249 96.7783H474.456L483.972 88.3678V23.3899L474.456 14.9794H512.249L502.461 23.3899V49.978H524.484V23.3899L514.968 14.9794H552.761L543.109 23.3899Z"/>
+            <PathGeometry FillRule="EvenOdd" Figures="M600.584 20.4152C603.671 21.4761 610.504 23.8241 616.782 25.219C622.985 32.8704 626.559 43.5754 626.559 55.9467C626.559 80.7712 612.012 98.8131 590.669 98.8131C569.053 98.8131 554.643 80.7712 554.643 55.9467C554.643 36.9343 563.004 21.8573 576.541 15.7514C582.78 15.8794 586.826 15.3288 589.966 14.9015C590.821 14.7851 591.609 14.6779 592.356 14.596C596.377 17.0447 598.19 18.911 598.927 19.6701C599.045 19.7912 599.135 19.884 599.202 19.9467C599.484 20.0371 599.957 20.1997 600.584 20.4152ZM590.669 89.7243C600.729 89.7243 606.303 79.8216 606.303 55.6754C606.303 31.6648 600.729 21.7621 590.669 21.7621C580.473 21.7621 574.899 31.6648 574.899 55.6754C574.899 79.8216 580.473 89.7243 590.669 89.7243ZM582.512 56.218L590.669 43.3309L598.69 56.218L590.669 68.5624L582.512 56.218Z"/>
+            <PathGeometry FillRule="EvenOdd" Figures="M632.713 17.4516C632.325 17.443 631.94 17.3675 631.553 17.2372V48.3501L642.292 23.3899H652.216V88.3678L642.836 96.7783H682.26L672.608 88.3678V23.3899H682.668L693.544 48.3501V14.9794H677.195C676.47 15.4871 675.8 16.0015 675.17 16.4854C673.326 17.9023 671.82 19.0587 670.255 19.024C668.65 18.9884 667.035 18.5229 665.056 17.9525C661.926 17.0504 657.886 15.8861 651.539 15.7452C645.223 15.605 641.129 16.3112 637.956 16.8585C635.949 17.2046 634.311 17.4871 632.713 17.4516Z"/>
+            <PathGeometry FillRule="EvenOdd" Figures="M733.352 13.5896L705.457 33.2546L720.119 55.2849L705.457 77.3152L733.352 96.9802L812.673 55.2849L733.352 13.5896Z"/>
+            <PathGeometry FillRule="EvenOdd" Figures="M91.9948 13.5896L119.89 33.2546L105.228 55.2849L119.89 77.3152L91.9948 96.9802L12.6734 55.2849L91.9948 13.5896Z"/>
+          </GeometryGroup>
           <Style x:Key="VersionItem" TargetType="ComboBoxItem">
             <Setter Property="Foreground" Value="#ECE7DC"/>
             <Setter Property="FontFamily" Value="{DynamicResource Serif}"/>
@@ -494,17 +489,16 @@
         </Path>
 
         <!-- the wordmark -->
-        <StackPanel VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,104,0,0" IsHitTestVisible="False">
-          <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-            <Path Style="{StaticResource Tip}"/>
-            <TextBlock Text="LONGSHOT" FontFamily="pack://application:,,,/Fonts/#Cinzel Black" FontSize="66" Foreground="{StaticResource Gold}"
-                       VerticalAlignment="Center" Margin="16,0,16,6">
-              <TextBlock.Effect><DropShadowEffect Color="#E9B44C" BlurRadius="24" ShadowDepth="0" Opacity="0.55"/></TextBlock.Effect>
-            </TextBlock>
-            <Path Style="{StaticResource Tip}">
-              <Path.RenderTransform><ScaleTransform ScaleX="-1"/></Path.RenderTransform>
-            </Path>
-          </StackPanel>
+        <StackPanel VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,96,0,0" IsHitTestVisible="False">
+          <!-- (the glow: the same outlines blurred behind them, as the drawing's own) -->
+          <Viewbox Width="500" HorizontalAlignment="Center">
+            <Grid Width="826" Height="112">
+              <Path Data="{StaticResource Wordmark}" Fill="#C09E52">
+                <Path.Effect><BlurEffect Radius="19" KernelType="Gaussian"/></Path.Effect>
+              </Path>
+              <Path Data="{StaticResource Wordmark}" Fill="#C09E52"/>
+            </Grid>
+          </Viewbox>
           <TextBlock Text="Ocarina of Time Recomp" FontFamily="{DynamicResource Serif}" FontSize="19" Foreground="#ECE7DC"
                      HorizontalAlignment="Center" Margin="0,22,0,0"/>
         </StackPanel>
