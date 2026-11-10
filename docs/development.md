@@ -62,11 +62,31 @@ Paper (the file Longshot) and built from that drawing. The button's word is in M
 your own in `%LOCALAPPDATA%\LongshotBuilder\fonts` is used instead. A commercial font such as FOT-Chiaro is never added to
 the repository or the app: its license does not allow passing it on.
 
+The launcher is the one window a player sees. The Longshot Builder opened with nothing asked is the launcher of the game it
+built last (its own pages when there is none yet; from the launcher, **Build from game files** at the foot of the bar opens
+them in the same window, with the way back in their head). When the button brings another version, the window stays and
+hidden programs do the work, each a program of its own: the setup in its engine mode (`LongshotBuilder-Setup.exe --engine
+--tag <tag>`, `builder/setup/setup.c`) installs that release's builder beside the one in use, without making it the one in
+use or removing any (a part the two share is linked, file by file, not downloaded), and then that version's own
+`make_game.py --update` builds the folder. What they say on stdout (`@@setup`, `@@percent`, `@@stage`, `@@progress`, ...) is
+read into the strip that fills in the button's place and the two lines under it by `builder/HookshotBuilder/LaunchWork.cs`,
+which moves nothing on a line it does not know: a version's tools may be older or newer than the launcher. A release ahead of
+the builder in use makes its builder the one in use from the next start (`versions\current.txt`); a pre-release or an older
+release never does, so going back to one does not take the launcher back. After the build the builders no longer in use go,
+as the build files do (`Storage.Free`).
+
+`powershell -File tests/builder_launcher/rig/run.ps1` tries all of it without a game, a release or GitHub: made-up releases
+handed out by a web server on this PC, a scratch install (`HOOKSHOT_SETUP_BASE`, which the builder honours as the setup does)
+and a stand-in for a version's Python that says what `make_game.py` says. It checks the setup's engine mode alone, then
+presses the launcher's button for a pre-release, a release to go back to, a build that stops, one cancelled, a download that fails and
+the latest release, and draws each to a PNG file.
+
 To look at the launcher without a game: `HOOKSHOT_LATEST_TAG=v1.2.0-rc.1,v1.1.0,v1.0.0?` gives it those releases instead of
 GitHub's (newest first; one with a part after its numbers is a pre-release, the first without is the latest, one ending in
 `?` has no builder to download; `none`: no answer). `HOOKSHOT_UI_PREVIEW` takes any of `versions` (the bar open), `older`
-(its older releases unfolded), `max` (the window maximised) and `pick=release:v1.1.0` or `pick=dev:<folder>` (that version
-picked), with commas between them, and `HOOKSHOT_UI_SHOT=<file.png>` draws the window to that file and closes, away from
+(its older releases unfolded), `max` (the window maximised), `pick=release:v1.1.0` or `pick=dev:<folder>` (that version
+picked), `go` (the button pressed), `cancel` (Cancel pressed when that is 40% done) and `pages` (Build from game files pressed), with
+commas between them, and `HOOKSHOT_UI_SHOT=<file.png>` draws the window to that file and closes, away from
 the screen.
 
 ### Test runs without another game folder
