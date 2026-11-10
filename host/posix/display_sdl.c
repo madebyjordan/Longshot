@@ -179,12 +179,14 @@ static void menu_mouse(int open) {
 static int sdl_ready;
 int hos_display_owns_sdl(void) { return sdl_ready; }   /* (controllers stay on this thread while it runs SDL) */
 
-/* main(), before the game: SDL's video on this, the main, thread; the screen's size for GetSystemMetrics */
+/* main(), before the game: SDL's video on this, the main, thread; the screen's size for GetSystemMetrics.
+   Returns 1 when ready, 0 for explicit headless, -1 for startup failure. */
 int hos_display_init(void) {
     if (getenv("HOS_HEADLESS")) return 0;
     if (!hos_sdl_load()) {
         hos_log("display: no SDL: no window");
-        return 0;
+        fprintf(stderr, "display: no SDL: no window\n");
+        return -1;
     }
     hos_sdl_identity("Hookshot", HOS_APP_ID);
     hos_sdl_hint("SDL_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR", "0");
@@ -196,9 +198,16 @@ int hos_display_init(void) {
     const int gamescope = desktop && strstr(desktop, "gamescope");
     if (!getenv("SDL_VIDEODRIVER") && !getenv("SDL_VIDEO_DRIVER") && !gamescope)
         hos_sdl_hint(hos_sdl_load() == 3 ? "SDL_VIDEO_DRIVER" : "SDL_VIDEODRIVER", "wayland,x11");
+    /* (SDL2 on Wayland: libdecor from the start. SDL2 2.32 asks for the compositor's decorations before the window's first
+       configure, and a compositor that answers "the client draws them" (COSMIC) has it unmap and map the window again
+       with libdecor inside that wait, which then waits forever on a field the switch cleared: no window, no renderer
+       (#992). libdecor takes the compositor's decorations itself where they are offered; with no libdecor SDL keeps
+       its own. SDL3 waits on the window's state and is left alone; SDL_VIDEO_WAYLAND_PREFER_LIBDECOR still wins) */
+    if (hos_sdl_load() == 2) hos_sdl_hint("SDL_VIDEO_WAYLAND_PREFER_LIBDECOR", "1");
     if (!hos_sdl_init(HOS_SDL_VIDEO | HOS_SDL_EVENTS)) {
         hos_log("display: SDL_Init: %s: no window", hos_sdl_error());
-        return 0;
+        fprintf(stderr, "display: SDL_Init: %s: no window\n", hos_sdl_error());
+        return -1;
     }
     int w, h;
     if (hos_sdl_desktop_size(&w, &h)) hos_posix_window[1] = w, hos_posix_window[2] = h;
@@ -237,9 +246,9 @@ void hos_display_loop(void) {
     window = hos_sdl_window(title, win_w, win_h);
     if (!window) {
         hos_log("display: SDL_CreateWindow: %s: no window", hos_sdl_error());
-        rx_start(NULL);
-        SetEvent(renderer_up);
-        for (;;) Sleep(1000);
+        fprintf(stderr, "display: SDL_CreateWindow: %s: no window\n", hos_sdl_error());
+        hos_log_flush();
+        ExitProcess(1);
     }
     vk_window.window = window;
     hos_posix_window[0] = 1;
@@ -296,7 +305,7 @@ void hos_display_loop(void) {
                 case HOS_SDL_EV_KEY_DOWN: {
                     const int scancode = e.scancode, mod = e.mod;
                     if (e.scancode == 41) mouse_capture(0);   /* Esc */
-                    if (!e.repeat && (scancode == 68 || (scancode == 40 && (mod & 0x300)))) set_fullscreen(!fullscreen);   /* F11, Alt+Enter */
+                    if (!e.repeat && ((scancode == 68 && !(mod & 0x0FC3)) || (scancode == 40 && (mod & 0x300)))) set_fullscreen(!fullscreen);   /* F11, Alt+Enter */
                     break;
                 }
                 case HOS_SDL_EV_MOUSE_DOWN:

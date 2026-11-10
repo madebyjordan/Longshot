@@ -9,5 +9,6 @@
   <ItemGroup>
     <Compile Include="../../builder/HookshotBuilder/LaunchList.cs" Link="LaunchList.cs"/>
     <Compile Include="../../builder/HookshotBuilder/LaunchWork.cs" Link="LaunchWork.cs"/>
+    <Compile Include="../../builder/HookshotBuilder/ShaderStep.cs" Link="ShaderStep.cs"/>
   </ItemGroup>
 </Project>

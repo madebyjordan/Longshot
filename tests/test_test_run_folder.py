@@ -13,6 +13,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+# (Windows only)
+RUN_ALL_SKIP = {"linux": "scripts/test-run.ps1 is Windows PowerShell's: drive letters and its hard links"}
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "test-run.ps1"
 

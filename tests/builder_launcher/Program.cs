@@ -125,16 +125,22 @@ static class Program
         Require(Math.Abs(w.Fraction - (0.12 + 0.88 * 0.125)) < 1e-9, "the setup's percent means nothing once the build runs");
         Feed(w, "@@stage compile", "@@plan 8 516", "@@file a.c 3 new", "@@file b.c 4 again", "@@file c.c 1 kept", "@@progress 0.25", "@@eta 190");
         Require(w.Detail == "Compiling changed files (2 of 8) · about 3 minutes left", w.Detail);
-        Require(w.Title == $"Updating to v2.2.0 - {(int)((0.12 + 0.88 * (0.20 + 0.76 * 0.25)) * 100)}%", w.Title);
+        Require(w.Title == $"Updating to v2.2.0 - {(int)((0.12 + 0.88 * (0.20 + 0.70 * 0.25)) * 100)}%", w.Title);
         Require(w.Done == null && w.Error == null, "not done, no error");
-        Feed(w, "@@stage finish", @"@@done C:\Games\Longshot");
-        Require(w.Done == @"C:\Games\Longshot" && w.Fraction > 0.96, "done, and the folder it says");
+        // (the shaders' step, where the version has it: the game's own lines, passed on by make_game.py, and its plain one
+        // when it left them to the first start)
+        Feed(w, "@@stage finish", "@@stage shaders Preparing the shaders", "@@progress 0.5");
+        Require(Math.Abs(w.Fraction - (0.12 + 0.88 * 0.96)) < 1e-9 && w.Detail == "Preparing the shaders", $"the shaders' step has its share: {w.Fraction}, {w.Detail}");
+        Feed(w, "the shaders were not prepared now (no usable Vulkan here): the game prepares them at its first start");
+        Require(w.Done == null && w.Error == null, "shaders left to the first start are not a failure");
+        Feed(w, @"@@done C:\Games\Longshot");
+        Require(w.Done == @"C:\Games\Longshot" && w.Fraction == 1, "done, and the folder it says");
 
         // ---- one whose builder is here: the build is the whole of it; a switch back says so ----
         w = new LaunchWork("v2.0.14", ahead: false, fetch: false);
         Require(w.Title == "Switching to v2.0.14 - 0%" && w.Detail == "Starting", w.Title + " / " + w.Detail);
         Feed(w, "@@stage compile", "@@progress 0.5");
-        Require(Math.Abs(w.Fraction - (0.20 + 0.38)) < 1e-9, $"no share kept for a download: {w.Fraction}");
+        Require(Math.Abs(w.Fraction - (0.20 + 0.35)) < 1e-9, $"no share kept for a download: {w.Fraction}");
         Require(w.Detail == "Compiling changed files", "no count and no time until the tools give them: " + w.Detail);
         Feed(w, "@@eta 20");
         Require(w.Detail == "Compiling changed files · less than a minute left", w.Detail);
@@ -144,10 +150,12 @@ static class Program
 
         // ---- tools that say what this launcher does not know (a later version's, an older one's) ----
         w = new LaunchWork("v3.0.0", ahead: true, fetch: false);
-        Feed(w, "@@stage lift", "@@progress 1", "@@stage shaders", "@@progress 0.5", "@@whatever 12", "plain words from a compiler", "@@progress nonsense");
+        Feed(w, "@@stage lift", "@@progress 1", "@@stage polish", "@@progress 0.5", "@@whatever 12", "plain words from a compiler", "@@progress nonsense");
         Require(Math.Abs(w.Fraction - 0.20) < 1e-9 && w.Detail == "Working", $"an unknown stage moves nothing and has plain words: {w.Fraction}, {w.Detail}");
-        Feed(w, "@@stage finish", "@@done X");
-        Require(w.Fraction >= 0.96 && w.Done == "X", "and the build still ends");
+        Feed(w, "@@stage finish");
+        Require(Math.Abs(w.Fraction - 0.90) < 1e-9, $"a version with no shaders' step is at its last step here: {w.Fraction}");
+        Feed(w, "@@done X");
+        Require(w.Fraction == 1 && w.Done == "X", "and the build still ends");
         Require(LaunchWork.TimeLeft(100) == "about 2 minutes left" && LaunchWork.TimeLeft(60) == "about a minute left" && LaunchWork.TimeLeft(4000) == "about 1 h 7 min left", "time left, in words");
     }
 }

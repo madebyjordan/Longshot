@@ -6,8 +6,8 @@ namespace HookshotBuilder;
 /// What the launcher says while it brings a version (Paper: "v2 - Updating"): the lines of the programs that do it, read into
 /// one number and two lines of words. Those programs are hidden and not the launcher's own: the setup, in its engine mode,
 /// installs that version's builder beside the others (builder/setup/setup.c: @@setup, @@percent), and then that version's own
-/// make_game.py builds the folder (@@stage, @@progress, @@plan, @@file, @@eta, @@done). Nothing here touches the window, the
-/// disk or a process.
+/// make_game.py builds the folder (@@stage, @@progress, @@plan, @@file, @@eta, @@done), the game's own shaders step last where
+/// that version has one. Nothing here touches the window, the disk or a process.
 ///
 /// A version's tools may say things this launcher does not know (a stage added later, a line worded differently): what is not
 /// understood moves nothing and is kept in the details, and the number never goes back.
@@ -20,8 +20,11 @@ sealed class LaunchWork
     {
         ["read"] = (0, 0.05, "Reading the game files kept in the folder"),
         ["lift"] = (0.05, 0.15, "Translating the game to PC code"),
-        ["compile"] = (0.20, 0.76, "Compiling changed files"),
-        ["finish"] = (0.96, 0.04, "Swapping in the new game"),
+        ["compile"] = (0.20, 0.70, "Compiling changed files"),
+        ["finish"] = (0.90, 0.02, "Swapping in the new game"),
+        // (the last step of the versions that have it, ShaderStep.cs: minutes on some GPUs. One without it, or with it switched
+        // off, is done at "finish", and the number goes from there to the end)
+        [ShaderStep.Id] = (0.92, 0.08, "Preparing the shaders"),
     };
     static readonly Regex PartOf = new(@"[Pp]art (\d+) of (\d+)");
 
@@ -66,7 +69,11 @@ sealed class LaunchWork
     public void Line(string line)
     {
         if (line.StartsWith("@@error ")) Error = line[8..].Trim();
-        else if (line.StartsWith("@@done ")) Done = line[7..].Trim();
+        else if (line.StartsWith("@@done "))
+        {
+            Done = line[7..].Trim();
+            Reach(1);
+        }
         else if (line.StartsWith("@@setup "))
         {
             // ("Downloading part 2 of 7 (310 MB)...", "Part 3 of 7 unchanged: kept from the installed version")

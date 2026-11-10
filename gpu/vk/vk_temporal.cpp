@@ -26,7 +26,9 @@
 // reason in the log when it changes.
 //
 // The Insert menu's Upscaler row (opts.dlss, upscaler_rows.h) chooses the engine; RX_VK_DLSS=1 / 2 (DLSS, DLAA) or
-// RX_VK_FSR=1 / 2 (FSR 4, its native anti-aliasing) over it, and =0 takes that engine out for the run.
+// RX_VK_FSR4=1 / 2 (FSR 4, its native anti-aliasing) over it, and =0 takes that engine out for the run. AMD FSR 3.1
+// (vk_fsr3.cpp, the row's value 3 or RX_VK_FSR=1) has inputs of its own (vk_fsr3_inputs.cpp): while it upscales, this chain
+// stands aside.
 // RX_VK_DLSS_DEBUG=motion: the motion vectors shown instead of the picture (|x|, |y| over 16 px as red and green, the actors'
 // in it); =alternate: every other frame the game's own upscale (a test's reference beside the engine's). (The names are
 // DLSS's from before FSR came: they apply to either engine.)
@@ -50,6 +52,7 @@
 #include "upscaler_rows.h"
 #include "vk_dlss.h"
 #include "vk_draw.h"
+#include "vk_fsr3.h"   // (fsr3_wanted: AMD FSR 3.1 upscales with inputs of its own)
 #include "vk_fsr4.h"
 #include "vk_menu.h"
 #include "vk_texture.h"
@@ -71,14 +74,29 @@ int env_switch(const char* name) {   // (-1: unset)
 }
 }  // namespace
 
+namespace {
+int env_dlss() { static const int v = env_switch("RX_VK_DLSS"); return v; }   // (read at the first ask, as the others)
+int env_fsr4() { static const int v = env_switch("RX_VK_FSR4"); return v; }
+}  // namespace
+
+bool temporal_env_chosen() {
+    // (only where the engine asked for runs: else a saved FSR 3.1 stays, not the game's own. DLSS before FSR 4, as below)
+    if (env_dlss() > 0) return dlss_why() == DLSS_OK;
+    return env_fsr4() > 0 && fsr4_why() == FSR_OK;
+}
+
 int temporal_mode() {
-    static const int env_dlss = env_switch("RX_VK_DLSS"), env_fsr = env_switch("RX_VK_FSR");
+    const int dlss = env_dlss(), fsr4 = env_fsr4();
     int v = opts.dlss;
-    if (env_dlss > 0) v = env_dlss >= 2 ? ur::DLAA : ur::DLSS;   // (2 and up: DLAA, as RX_VK_DLSS was clamped before)
-    else if (env_fsr > 0) v = env_fsr >= 2 ? ur::FSR_AA : ur::FSR;
-    if (v < 0 || v >= ur::kUpscalers) return ur::GAME;
+    if (dlss > 0) v = dlss >= 2 ? ur::DLAA : ur::DLSS;   // (2 and up: DLAA, as RX_VK_DLSS was clamped before)
+    else if (fsr4 > 0) v = fsr4 >= 2 ? ur::FSR4_AA : ur::FSR4;
+    // (FSR 3.1, the row's 3, is not an engine of this chain: the game's own as far as it is concerned. Nor anything while
+    // FSR 3.1 upscales: one upscaler at a time, and one camera jitter. A switch above goes over the row's FSR 3.1 too
+    // (fsr3_wanted asks temporal_env_chosen); RX_VK_FSR=1 goes over them)
+    if (!ur::is_dlss(v) && !ur::is_fsr4(v)) return ur::GAME;
+    if (fsr3_wanted()) return ur::GAME;
     if (ur::is_dlss(v) && dlss_why() != DLSS_OK) return ur::GAME;
-    if (ur::is_fsr(v) && fsr4_why() != FSR_OK) return ur::GAME;
+    if (ur::is_fsr4(v) && fsr4_why() != FSR_OK) return ur::GAME;
     return v;
 }
 bool temporal_wanted() { return temporal_mode() != ur::GAME; }
@@ -197,16 +215,16 @@ void note_output(const Texture* out, uint32_t level) {
 /// The chain's slot for the engine of an Upscaler value (DLSS and DLAA: DLSS's; FSR 4 and its native AA: FSR's)
 Engine& engine_of(int mode) {
     State& s = st();
-    Engine& k = s.engines[ur::is_fsr(mode) ? 1 : 0];
-    if (!k.e) k.e = ur::is_fsr(mode) ? fsr4_engine() : dlss_engine();
+    Engine& k = s.engines[ur::is_fsr4(mode) ? 1 : 0];
+    if (!k.e) k.e = ur::is_fsr4(mode) ? fsr4_engine() : dlss_engine();
     return k;
 }
 const char* name_of(int mode) {
     switch (mode) {
     case ur::DLSS: return "NVIDIA DLSS";
     case ur::DLAA: return "NVIDIA DLAA";
-    case ur::FSR: return "AMD FSR 4";
-    case ur::FSR_AA: return "AMD FSR 4 Native AA";
+    case ur::FSR4: return "AMD FSR 4";
+    case ur::FSR4_AA: return "AMD FSR 4 Native AA";
     default: return "the game's own";
     }
 }
@@ -650,7 +668,7 @@ uint32_t temporal_jitter_size(int axis) {
     const int mode = temporal_mode();
     if (off || mode == ur::GAME) return 0;
     const uint64_t last = s.last_frame.load(std::memory_order_relaxed);
-    if (s.engines[ur::is_fsr(mode) ? 1 : 0].failed.load(std::memory_order_relaxed) || !last || texture_frame_no() - last > 30)
+    if (s.engines[ur::is_fsr4(mode) ? 1 : 0].failed.load(std::memory_order_relaxed) || !last || texture_frame_no() - last > 30)
         return 0;
     if (axis == 2) return s.jitter_phases.load(std::memory_order_relaxed);
     return axis ? s.jitter_h.load(std::memory_order_relaxed) : s.jitter_w.load(std::memory_order_relaxed);
@@ -694,6 +712,12 @@ void temporal_idle() {
     std::lock_guard lk(s.mu);
     const uint64_t now = texture_frame_no();
     if (now - s.asked <= 120) return;   // (in use, or off for under 120 frames (2 s): kept, a row stepped through comes back at once)
+    // (hookshot, a stutter: kept too while DLSS or FSR 4 is still the Upscaler's choice. Each area change's loading screen has no
+    // gameplay upscale for 2 s and more, and DLSS's feature let go then was made again at the next area's first frame: 44-78 ms
+    // of the replay thread at every area entry (12 times in a 15-minute walk, 2026-11-10, #1520). Let go once the row leaves them.
+    // RX_VK_DLSS_IDLE_RELEASE=1: let go after 120 frames unused, as before)
+    static const bool release_idle = getenv("RX_VK_DLSS_IDLE_RELEASE") && atoi(getenv("RX_VK_DLSS_IDLE_RELEASE")) != 0;
+    if (!release_idle && temporal_wanted()) return;
     if (s.drawing) {
         logf("vk: %s: not used for 120 frames (the last at frame %llu, now %llu): what it made and its images let go; "
              "the next upscale with it makes them again", s.drawing->name, (unsigned long long)s.asked, (unsigned long long)now);

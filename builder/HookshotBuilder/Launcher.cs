@@ -346,10 +346,20 @@ public partial class MainWindow
         var args = new List<string> { "--update", launchFolder };
         if (Storage.WorkChosen) args.AddRange(new[] { "--work", Storage.Work });
         if (dlss) args.AddRange(new[] { "--fetch-ngx-sdk", "--accept-nvidia-license" });
+        // (the shaders' step, left to the game's first start when the player unticked it: said only to tools that know the
+        // word. A version from before the step has none to leave, and would stop on an argument it does not know)
+        if (!BuilderSettings.PrepareNow(SettingsPath) && KnowsShaderStep(tools!)) args.Add(ShaderStep.Later);
         launchRunner = new Runner(tools!, args, workers, dlss ? Storage.NgxSdk : null);
         launchRunner.Line += l => Dispatcher.BeginInvoke(() => WorkLine(l));
         launchRunner.Finished += failure => Dispatcher.BeginInvoke(() => WorkEnded(failure));
         launchRunner.Start();
+    }
+
+    /// (that version's make_game.py takes --no-prepare-shaders: read from its text, as each version runs its own tools)
+    static bool KnowsShaderStep(Tools tools)
+    {
+        try { return File.ReadAllText(System.IO.Path.Combine(tools.Root, "nx2", "make_game.py")).Contains(ShaderStep.Later); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }
     }
 
     /// The setup in its engine mode: that release installed beside the others, nothing started, nothing removed. null: done
@@ -409,8 +419,9 @@ public partial class MainWindow
             launchBuilt = GameVersion(launchFolder) ?? ReadVersion(launchFolder);
             if (workTarget?.Tag is { } tag) NextBuilder(tag);
             if (Shot == null) Finder.RefreshShortcuts(launchFolder);   // (the player's shortcuts, onto the folder's launcher again)
-            // (as after any build: the build files go, and a version's builder that is no longer the one in use)
-            var freed = Storage.KeepBuildFiles ? Task.CompletedTask : Task.Run(Storage.Free);
+            // (as after any build: the build files go but its compiled objects, so the next version compiles only what changed,
+            // and a version's builder that is no longer the one in use)
+            var freed = Storage.KeepBuildFiles ? Task.CompletedTask : Task.Run(() => Storage.Free(afterBuild: true));
             if (Shot != null) freed.Wait(20000);   // (development: it is out as soon as it is drawn)
             launchState = LaunchState.Idle;
         }

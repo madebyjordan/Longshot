@@ -1,6 +1,7 @@
-"""The Insert menu's scaling rows: the Upscaler (opts.dlss: the game's own, NVIDIA DLSS and DLAA, AMD FSR 4 and its native
-AA) and the Render resolution's steps for it (gpu/vk/upscaler_rows.h), their order on the Graphics tab, options files from
-before still loading, and their help (why DLSS or FSR is not offered, the Sharpness DLSS wants). No game or GPU required.
+"""The Insert menu's scaling rows: the Upscaler (opts.dlss: the game's own, NVIDIA DLSS and DLAA, AMD FSR 3.1, AMD FSR 4 and
+its native AA) and the Render resolution's steps for it (gpu/vk/upscaler_rows.h), their order on the Graphics tab, options
+files from before still loading, and their help (why DLSS or FSR 4 is not offered, the Sharpness DLSS wants). No game or GPU
+required.
 
 python -I -B tests/test_upscaler_rows.py [--cxx g++]
 """
@@ -47,7 +48,7 @@ def main():
     # the menu's rules are upscaler_rows.h's, checked by behaviour in test_upscaler_rows.cpp: here only that the menu uses them
     uses = {
         "row_fixed": ("ur::upscaler_fixed(", "ur::resolution_fixed(", "reflex_available()", "ur::model_fixed("),
-        "row_shown": ("ur::upscaler_shown(dlss_built() || fsr4_built())", "ur::model_shown(dlss_built())"),
+        "row_shown": ("ur::upscaler_shown(dlss_built() || fsr4_built(), fsr3::supported())", "ur::model_shown(dlss_built())"),
         "set_row": ("ur::step_upscaler(", "ur::step(", "ur::snap(", "row_fixed("),
     }
     for name, calls in uses.items():
@@ -59,7 +60,7 @@ def main():
     # DLSS's values ask for more Sharpness (it looks softer than the game's own)
     upscaler = function(menu, "const char* hn_upscaler(int v, int variant) {")
     for why in ("not in this build", "RX_VK_DLSS=0", "NVIDIA RTX GPU", "newer NVIDIA driver", "runtime was not found",
-                "(int)dlss_why()", "RX_VK_FSR=0", "AMD's files were not found", "no FSR 4 for this GPU", "(int)fsr4_why()"):
+                "(int)dlss_why()", "RX_VK_FSR4=0", "AMD's files were not found", "no FSR 4 for this GPU", "(int)fsr4_why()"):
         if why not in upscaler:
             raise SystemExit("hn_upscaler: the help no longer says why DLSS or FSR is not offered (%s)" % why)
     if upscaler.count("Sharpness to") < 2:
@@ -67,7 +68,7 @@ def main():
     resolution = function(menu, "const char* hn_resolution(int v, int variant) {")
     if resolution.count("Sharpness to around 80%") < 5 or "upscaler()" not in resolution:
         raise SystemExit("hn_resolution: DLSS's modes do not say to set Sharpness to around 80%, or not for the Upscaler shown")
-    measure = function(menu, "int measure_help(int s) {")
+    measure = function(menu, "float measure_help(ui::Ctx& c, float width) {")
     if "r.hint(v, k)" not in measure:
         raise SystemExit("measure_help leaves the values' lines out: the help's room would jump as a value changes")
     for row, hint in (('"Upscaler", &opts.dlss', "hn_upscaler"), ('"DLSS model", &opts.dlss_model', "hn_dlss_model"), ('"Render resolution", &opts.resolution', "hn_resolution"),
@@ -95,8 +96,26 @@ def main():
     temporal = (ROOT / "gpu" / "vk" / "vk_temporal.cpp").read_text(encoding="utf-8")
     mode = function(temporal, "int temporal_mode() {")
     if "dlss_why() != DLSS_OK" not in mode or "fsr4_why() != FSR_OK" not in mode:
-        raise SystemExit("temporal_mode asks for an engine where it cannot run (DLAA or FSR's native AA would hold the 3D at "
+        raise SystemExit("temporal_mode asks for an engine where it cannot run (DLAA or FSR 4's native AA would hold the 3D at "
                          "full scale for nothing)")
+    if "std::clamp(" in mode:
+        raise SystemExit("temporal_mode clamps the row's value: FSR 3.1 (3) would run on the chain")
+    if "fsr3_wanted()" not in mode:
+        raise SystemExit("temporal_mode runs DLSS or FSR 4 while FSR 3.1 upscales (two upscalers, two jitters)")
+    fsr3 = (ROOT / "gpu" / "vk" / "vk_fsr3.cpp").read_text(encoding="utf-8")
+    if "!temporal_env_chosen()" not in function(fsr3, "bool fsr3_wanted() {"):
+        raise SystemExit("fsr3_wanted: a saved FSR 3.1 drops RX_VK_DLSS / RX_VK_FSR4, which go over the row")
+    chosen = function(temporal, "bool temporal_env_chosen() {")
+    if "dlss_why() == DLSS_OK" not in chosen or "fsr4_why() == FSR_OK" not in chosen:
+        raise SystemExit("temporal_env_chosen: a switch for an engine that cannot run here leaves the game's own, not the saved FSR 3.1")
+    # FSR 3.1 and FSR 4 are offered where they run, and the row steps over what does not run here
+    available = function(menu, "unsigned upscalers_available() {")
+    if "fsr3::supported()" not in available:
+        raise SystemExit("upscalers_available does not ask vk_fsr3.cpp whether FSR 3.1 runs here")
+    if "fsr4_why() == FSR_OK" not in available:
+        raise SystemExit("upscalers_available does not ask vk_fsr4.cpp whether FSR 4 runs here")
+    if "upscalers_available()" not in function(menu, "void set_row(") or "upscalers_available()" not in function(menu, "bool row_fixed("):
+        raise SystemExit("the Upscaler row does not step over (or fix on) what runs here")
     with tempfile.TemporaryDirectory(prefix="upscaler-rows-") as tmp:
         exe = Path(tmp) / "upscaler-rows"
         subprocess.run([args.cxx, "-std=c++20", "-Wall", "-Wextra", "-Werror",

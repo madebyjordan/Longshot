@@ -143,7 +143,7 @@ class FinishOutputTests(unittest.TestCase):
             self.finish(launcher=True)
         self.assertEqual(copied, [self.source, self.image, self.root / "LongshotBuilder-Setup.exe"])
         self.assertEqual(binary.read_bytes(), self.source.read_bytes())
-        self.assertEqual((self.out / "Longshot.exe").read_bytes(), b"new synthetic launcher")
+        self.assertEqual((self.out / make_game.LAUNCHER).read_bytes(), b"new synthetic launcher")
         self.assertFalse(self.destination.exists())   # (the folder's old hookshot.exe launcher is removed)
         self.assertEqual((self.out / "image.bin").read_bytes(), self.image.read_bytes())
         self.assertEqual(list(self.out.rglob("*.new")), [])
@@ -167,7 +167,7 @@ class FinishOutputTests(unittest.TestCase):
         self.assertEqual(binary.read_bytes(), b"existing synthetic game in bin")
         self.assertEqual(binary.with_name("hookshot.exe.new").read_bytes(), self.source.read_bytes())
         self.assertEqual((self.out / "image.bin.new").read_bytes(), self.image.read_bytes())
-        self.assertEqual((self.out / "Longshot.exe.new").read_bytes(), b"partial launcher")
+        self.assertEqual((self.out / (make_game.LAUNCHER + ".new")).read_bytes(), b"partial launcher")
 
     def test_partial_executable_copy_preserves_both_installed_files(self):
         def partial_copy(source, destination):

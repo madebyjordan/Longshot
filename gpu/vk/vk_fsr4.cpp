@@ -9,7 +9,7 @@
 // AMD's library is looked for in RX_VK_FSR_DIR=<folder> when set, the executable's folder (bin\ beside the launcher), then
 // the game folder: amd_fidelityfx_loader_vk.dll, with amd_fidelityfx_upscaler_vk.dll beside it (Linux: a Vulkan FSR 4
 // library, amd_fidelityfx_upscaler_vk.so). Of the upscalers it lists for this GPU the newest FSR 4 is taken, never an older
-// one in its place. RX_VK_FSR=0: FSR out for this run.
+// one in its place. RX_VK_FSR4=0: FSR 4 out for this run.
 #include "vk_fsr4.h"
 
 #include <atomic>
@@ -54,7 +54,7 @@ std::atomic<int> g_why{-1};
 
 FsrWhy fsr4_why() {
     if (!fsr4_built()) return FSR_NOT_BUILT;
-    static const bool env_off = env_switch("RX_VK_FSR") == 0;
+    static const bool env_off = env_switch("RX_VK_FSR4") == 0;
     if (env_off) return FSR_ENV_OFF;
     const int w = g_why.load(std::memory_order_relaxed);
     return w < 0 ? FSR_OK : (FsrWhy)w;

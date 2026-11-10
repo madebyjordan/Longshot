@@ -6,6 +6,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+RUN_ALL_ARGS = ["--cxx", "g++"]
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)

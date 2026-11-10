@@ -16,6 +16,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+RUN_ALL_ARGS = ["--cc", "gcc", "--cxx", "g++"]
+
 ROOT = Path(__file__).resolve().parents[1]
 THRESHOLDS = [7849, 1638, 3277, 4915, 6553, 9830]   # (Default, then 5% ... 30% of 32767)
 
@@ -57,6 +59,8 @@ def main():
     menu = (ROOT / "gpu" / "vk" / "vk_menu.cpp").read_text(encoding="utf-8")
     header = (ROOT / "gpu" / "vk" / "vk_menu.h").read_text(encoding="utf-8")
     readme = (ROOT / "readme.md").read_text(encoding="utf-8")
+    if (ROOT / "docs" / "hookshot-readme.md").is_file():   # (longshot: the options table is in Hookshot's readme, under docs)
+        readme += (ROOT / "docs" / "hookshot-readme.md").read_text(encoding="utf-8")
 
     check(not re.search(r"HOS_OPT_\w+ = 11\b", api), "a HOS_OPT_ enum also takes option 11")
     check("int32_t hos_stick_axis(" in hid, "nn_hid.c has no hos_stick_axis")
@@ -125,7 +129,7 @@ int main(void) {
 #include <cstring>
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "FAIL:%d %s\n", __LINE__, #x); exit(1); } } while (0)
 enum MenuTab { TAB_CONTROLS };
-struct Options { int output_res = 0, resolution = 0, upscale = 0, dlss = 0, stick_dead_zone = 0; } opts;
+struct Options { int output_res = 0, resolution = 0, fps_cap = 0, upscale = 0, dlss = 0, stick_dead_zone = 0; } opts;
 static int output_choice(int v) { return v; }
 ''' + block(menu, "struct Row {") + ";\n" + block(menu, "const char* tx_stick_dead_zone(") + "\n" + \
         "Row rows[] = {" + row.group(0) + "};\n" + block(menu, "const char* ini_key(") + r'''
