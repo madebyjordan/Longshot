@@ -95,7 +95,9 @@ jobs:
           SHA: ${{ steps.merge.outputs.sha }}
         run: |
           set +e -uo pipefail   # (the default shell stops at the first failure: tests are expected to fail here)
+          [ -n "$ANTHROPIC_API_KEY" ] || unset ANTHROPIC_API_KEY   # (an empty key would be tried instead of the token)
           npm install -g --silent @anthropic-ai/claude-code
+          claude --version
           cat > "$RUNNER_TEMP/prompt.md" <<EOF
           You are finishing a merge of Hookshot's main (refs/hookshot/main, $SHA) into Longshot's $BRANCH branch, in this
           checkout. Git stopped with conflicts in the files listed in $RUNNER_TEMP/files.txt.
@@ -113,6 +115,7 @@ jobs:
           claude -p "$(cat "$RUNNER_TEMP/prompt.md")" --dangerously-skip-permissions --max-turns 400 \
             > "$RUNNER_TEMP/claude.md" 2>&1
           code=$?
+          echo "Claude Code ended with $code:"; tail -40 "$RUNNER_TEMP/claude.md"
           { echo "### Claude Code"; echo; cat "$RUNNER_TEMP/claude.md"; } >> "$GITHUB_STEP_SUMMARY"
           if [ $code -ne 0 ] || [ -f .git/MERGE_HEAD ] || [ -n "$(git diff --name-only --diff-filter=U)" ] \
              || git grep -qE '^(<<<<<<<|>>>>>>>) ' HEAD -- . ':!*.md'; then
