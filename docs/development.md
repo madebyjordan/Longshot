@@ -40,6 +40,14 @@ The dump can also come from `OOT_DUMP` (its folder) or `OOT_EXEFS`; `OOT_WORK` m
 The built game's own arguments (`image.bin`, `--romfs`, `--user`, `--trace`, `--prepare-shaders`) are in the README's
 [Running the game from the command line](../readme.md#running-the-game-from-the-command-line).
 
+### The release and dev game folders
+
+`scripts/build-game.ps1 -Channel release` builds `Longshot\game` with the installed Longshot Builder's own tools, as its
+Update does: the published release. `-Channel dev` builds `Longshot\game-dev` from `Longshot\worktrees\dev` (the dev
+branch as checked out), with AMD FSR 4. They share the game files (hard links) and keep their own caches, saves and
+settings, so switching costs nothing. The window's title, the start-up screen, the Insert menu and the log's first line
+say which one runs: a release its tag (`v1.0.0`), any other build its branch and commit (`dev 86148ce`).
+
 ### Test runs without another game folder
 
 A new game folder costs 24 GB (the romfs, unless hard-linked) and a played one another 7 GB of caches; none is needed to
