@@ -66,6 +66,20 @@ def main():
         make_game.ship_state_list(game)
         if tool.read(os.path.join(game, "hookshot_pipeline_states_shipped.bin")) != merged:
             raise SystemExit("make_game did not ship work/pipeline_states.bin")
+        # (longshot) with none in work/, the source's lists/pipeline_states.bin; work/'s wins when both are there
+        source_list = head + rec(7, 8, 3)
+        os.makedirs(os.path.join(d, "lists"))
+        open(os.path.join(d, "lists", "pipeline_states.bin"), "wb").write(source_list)
+        make_game.ship_state_list(game)
+        if tool.read(os.path.join(game, "hookshot_pipeline_states_shipped.bin")) != merged:
+            raise SystemExit("make_game shipped the source's list over work/'s")
+        os.remove(os.path.join(d, "work", "pipeline_states.bin"))
+        make_game.ship_state_list(game)
+        if tool.read(os.path.join(game, "hookshot_pipeline_states_shipped.bin")) != [rec(7, 8, 3)]:
+            raise SystemExit("make_game did not ship lists/pipeline_states.bin with none in work/")
+        # the source's own list reads as a list
+        if len(tool.read(str(ROOT / "lists" / "pipeline_states.bin"))) < 1:
+            raise SystemExit("lists/pipeline_states.bin is empty")
     print("pipeline state list: record, merge and shipping ok")
 
 
