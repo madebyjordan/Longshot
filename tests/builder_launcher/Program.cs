@@ -51,6 +51,9 @@ static class Program
         // (a dev build picked)
         l = LaunchList.Make(github, "v2.1.0", "v2.1.0", NoBuilders, dev, true, @"dev:C:\Games\game-dev", false);
         Require(l.Picked?.Kind == LaunchKind.Dev && l.Picked.Ticked, "a dev build picked is ticked");
+        // (the same folder written in small letters, as launcher.json's own names are: still the one picked)
+        l = LaunchList.Make(github, "v2.1.0", "v2.1.0", NoBuilders, dev, true, @"dev:c:\games\GAME-dev", false);
+        Require(l.Picked?.Kind == LaunchKind.Dev, "a pick is found whatever its capitals");
 
         // ---- a newer release is out: it is first in Releases with the arrow, the folder's below it, still picked ----
         github = new List<ReleaseInfo> { R("v2.2.0"), R("v2.2.0-rc.1"), R("v2.1.0"), R("v2.0.14") };

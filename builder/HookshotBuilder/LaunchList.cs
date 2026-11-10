@@ -73,7 +73,8 @@ static class LaunchList
         foreach (var (dir, build) in dev)
             all.Add(new LaunchChoice { Kind = LaunchKind.Dev, Folder = dir, Build = build, Label = build, Title = build + " - Dev build", Here = true });
 
-        var picked = all.FirstOrDefault(c => c.Key == pick)
+        // (a key holds a folder or a tag: neither minds capitals, and the folder may come written another way)
+        var picked = all.FirstOrDefault(c => string.Equals(c.Key, pick, StringComparison.OrdinalIgnoreCase))
                      ?? all.FirstOrDefault(c => SameTag(c.Tag, built))
                      ?? all.FirstOrDefault(c => c.Here)
                      ?? all.FirstOrDefault(c => c.Kind == LaunchKind.Release)

@@ -231,8 +231,22 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(folder))
             folder = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Games", "Longshot");
         foreach (var known in new[] { folder }.Concat(Choices().Keys))
-            if (File.Exists(GameExe(known))) return known.TrimEnd('\\', '/');
+            if (File.Exists(GameExe(known))) return AsOnDisk(known.TrimEnd('\\', '/'));
         return null;
+    }
+
+    /// (launcher.json keeps its folders in small letters: the folder as the disk writes it, for what is shown and for the
+    /// shortcuts made onto it)
+    static string AsOnDisk(string path)
+    {
+        try
+        {
+            var d = new DirectoryInfo(path);
+            if (d.Parent == null) return d.FullName.ToUpperInvariant();   // (a drive)
+            var name = d.Parent.GetFileSystemInfos(d.Name).FirstOrDefault()?.Name ?? d.Name;
+            return System.IO.Path.Combine(AsOnDisk(d.Parent.FullName), name);
+        }
+        catch (Exception) { return path; }
     }
 
     static string? LaunchArg()
