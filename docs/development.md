@@ -51,11 +51,16 @@ settings, so switching costs nothing. The window's title, the start-up screen, t
 say which one runs: a release its tag (`v1.0.0`), a dev build the release it is heading for and its commit (`pre-1.1.0 6353e9b`), any other its branch and commit.
 
 Opening `Longshot.exe` in `game` shows the launcher (the Longshot Builder in launch mode, `builder/HookshotBuilder/Launcher.cs`):
-a version list with the published releases and every dev build in a folder beside `game` (its `hookshot_build.txt` says
-`channel=dev`; `build-game.ps1` writes it), and one button that plays the version picked, or updates or builds the folder to
-it first. The pick is kept per folder (`%LOCALAPPDATA%\LongshotBuilder\launcher.json`). Its text is in Marcellus (OFL, in the
-app); a font file of your own in `%LOCALAPPDATA%\LongshotBuilderonts` is used instead. A commercial font such as
-FOT-Chiaro is never added to the repository or the app: its license does not allow passing it on.
+one button that plays the version picked, or updates or builds the folder to it first, and **All Versions**, a bar with the
+published releases and every dev build in a folder beside `game` (its `hookshot_build.txt` says `channel=dev`;
+`build-game.ps1` writes it). The pick is kept per folder (`%LOCALAPPDATA%\LongshotBuilder\launcher.json`). It is drawn in
+Paper (the file Longshot) and built from that drawing. The button's word is in Marcellus (OFL, in the app); a font file of
+your own in `%LOCALAPPDATA%\LongshotBuilder\fonts` is used instead. A commercial font such as FOT-Chiaro is never added to
+the repository or the app: its license does not allow passing it on.
+
+To look at the launcher without a game: `HOOKSHOT_LATEST_TAG=v1.1.0,v1.0.0` gives it those releases instead of GitHub's
+(the latest first; `none`: no answer), `HOOKSHOT_UI_PREVIEW=versions` opens the bar (`max`: the window maximised), and
+`HOOKSHOT_UI_SHOT=<file.png>` draws the window to that file and closes, away from the screen.
 
 ### Test runs without another game folder
 
