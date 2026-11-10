@@ -1,7 +1,7 @@
 # Pipeline state list
 
 `pipeline_states.bin` is the list a Longshot build ships beside the game as `hookshot_pipeline_states_shipped.bin`
-(`nx2/make_game.py`; a `work/pipeline_states.bin` takes its place when there is one). The first start builds these
+(`nx2/make_game.py`; a build without this folder ships Hookshot's own list, `assets/pipeline_states.bin.xz`). The first start builds these
 pipelines before the title screen, so the areas they came from do not pause to compile them in play.
 
 It holds hashes, formats and draw state only (528 bytes a pipeline), no game code: the shaders come from the player's

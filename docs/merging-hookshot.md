@@ -26,7 +26,8 @@ what `main` already brought in.
      cache or marker written when `cache_readonly()`;
    - the texture budget (`gpu/vk/vram_squeeze.h`): the cut is only what the blocks' free space cannot take;
    - the start-up screen: the `LONGSHOT` wordmark and the diagnostics lines (`StartupView::diag`);
-   - `lists/pipeline_states.bin`, shipped by `nx2/make_game.py` when `work/` has none;
+   - `lists/pipeline_states.bin`, shipped by `nx2/make_game.py` in place of Hookshot's
+     `assets/pipeline_states.bin.xz` when the source has it;
    - the night fix (`EDEN_F32_ADD_TRACK`), the AMD terrain re-encode kept on (`RX_VK_UNEVEN_BC`);
    - the launcher and version list in the builder, `scripts/build-game.ps1`, `nx2/version.py`'s dev label.
 4. **readme.md is Longshot's.** Keep dev's side. Hookshot's readme lives on as `docs/hookshot-readme.md`.

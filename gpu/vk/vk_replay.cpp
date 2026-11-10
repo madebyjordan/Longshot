@@ -78,7 +78,25 @@ std::unordered_map<uint64_t, uint64_t> q_last;   // queue -> its last submission
 std::map<uint64_t, uint64_t> value_queue;   // a submission's value -> its queue (sync_order_mu)
 std::atomic<uint64_t> pushed{0};
 std::atomic<uint64_t> q_values{0};   // the fence values handed out (a submit or a present takes one each)
-std::mutex replay_mu;   // one replay at a time (the game submits from several threads)
+::mkwvk::rec::DrainingMutex replay_mu;   // one replay at a time (the game submits from several threads; RX_VK_RECORDER=defer: what
+                                         // a thread recorded is drained before another may take it)
+// (RX_VK_RECORDER=thread: the recorder thread named, and above normal priority as par_worker_main's threads)
+// RX_VK_RECORDER_PIN (experiment): next = the physical core below the reserved one (the replay thread's: hos_reserved_cpus),
+// sibling = the reserved core itself (shares it with the replay thread), or a hex mask; unset: not pinned
+const bool rec_thread_hook = (::mkwvk::rec::g_thread_start_hook = [] {
+    SetThreadDescription(GetCurrentThread(), L"mkw_vk recorder");
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+    const char* pin = getenv("RX_VK_RECORDER_PIN");
+    if (!pin || !*pin) return;
+    const uint64_t reserved = host && host->reserved_cpus ? host->reserved_cpus() : 0;
+    uint64_t m = 0;
+    if (!strcmp(pin, "next")) m = reserved ? reserved >> __builtin_popcountll(reserved) : 0;
+    else if (!strcmp(pin, "sibling")) m = reserved;
+    else m = strtoull(pin, nullptr, 16);
+    const bool ok = m && SetThreadAffinityMask(GetCurrentThread(), (DWORD_PTR)m) != 0;
+    ::mkwvk::logf("vk: RX_VK_RECORDER_PIN=%s: the recorder %s %#llx (reserved %#llx)", pin, ok ? "pinned to" : "NOT pinned, mask",
+                  (unsigned long long)m, (unsigned long long)reserved);
+}, true);
 // (RX_VK_BATCH: see queue_flush_locked)
 VkSemaphore batch_tl = VK_NULL_HANDLE;
 uint64_t batch_next = 0, batch_flushed = 0;
@@ -558,8 +576,15 @@ struct UbWord {
     bool on = false;
 };
 thread_local UbWord ub_words[128];
+uint32_t ub_word_index(uint64_t addr) {
+    // Words 512 bytes or a page apart share the low seven word bits. Add higher bits to separate those strides
+    // while keeping runs of up to 64 words collision-free. Hits still compare the full address in ub_word_hit.
+    static const bool linear = getenv("RX_VK_UB_WORD_HASH") && atoi(getenv("RX_VK_UB_WORD_HASH")) == 0;
+    const uint64_t word = addr >> 2;
+    return (uint32_t)((linear ? word : word + (word >> 7) + (word >> 14)) & 127);
+}
 bool ub_word_hit(uint64_t addr, size_t lim, uint32_t* out) {
-    UbWord& w = ub_words[(addr >> 2) & 127];
+    UbWord& w = ub_words[ub_word_index(addr)];
     if (!w.on || w.addr != addr || w.rec != rec_value_now || w.page != memory_page_stamp(addr)) return false;
     if (!ub_gap_holds(addr, 4, 0, lim)) return false;
     *out = w.v;
@@ -645,7 +670,7 @@ bool ub_read(uint64_t addr, void* dst, uint64_t n) {
     // in the gap do not walk the list. A word kept from that gap is the capture's own bytes)
     if (ub_gap_holds(addr, n, 0, lim) || ub_try_gap(0, lim, addr, n)) {
         if (n == 4 && page == memory_page_stamp(addr)) {
-            UbWord& w = ub_words[(addr >> 2) & 127];
+            UbWord& w = ub_words[ub_word_index(addr)];
             uint32_t v = 0;
             std::memcpy(&v, dst, 4);
             w = {};
@@ -2550,6 +2575,14 @@ uint32_t crc32(const uint8_t* p, size_t n, uint32_t c = 0xFFFFFFFFu) {
 }
 } // namespace
 
+// Called while replaying, including workers joined before the next signal is issued.
+// The current logical value may already have completed before a stopped queue resumes.
+// A new signal instead follows every recording using the images being retired, including
+// batched work and the unsignalled post-present interpolation recording. Zero retains forever.
+uint64_t vk_retirement_value() {
+    return timeline && signaled != UINT64_MAX ? signaled + 1 : 0;
+}
+
 /// A submission or a wait came back VK_ERROR_DEVICE_LOST. Nothing sent from here on runs, and the replay kept going: no
 /// submission completed again, so no capture or staging arena was let go, and system memory filled until the window was
 /// closed (issue 1275: captures kept 25 -> 6527, staging 256 -> 1408 MB). Now the report once (a thread that sees the loss
@@ -3453,6 +3486,8 @@ std::atomic<uint32_t> present_kind{0};   // (vk_framegen.cpp: 1 while a made fra
 // for the submit and the present. Held over vkAcquireNextImageKHR and the fence, it stopped the replay's submits for as long as
 // the swapchain had no image free, twice a frame with frame interpolation.
 std::mutex present_image_mu;
+static void present_out(uint32_t index, std::unique_lock<std::mutex>& qk);   // (present_image's end, below)
+thread_local PendingPresent* present_defer_into = nullptr;
 void present_image(VkImage src, uint32_t sw, uint32_t sh, const int crop[4], VkImageView view) {
     std::lock_guard lk(present_image_mu);
     static int hdr_was = -1;   // (the Insert menu's HDR as the swapchain was made for it; -1: not yet looked at)
@@ -3638,6 +3673,28 @@ void present_image(VkImage src, uint32_t sw, uint32_t sh, const int crop[4], VkI
     reflex_submit_ends();
     res = vkQueueSubmit2(dev.queue, 1, &si, f.done);
     if (res == VK_ERROR_DEVICE_LOST) device_lost();
+    if (present_defer_into) {   // (present ahead: the copy is queued; present_commit shows it at its time)
+        present_defer_into->used = true;
+        present_defer_into->index = index;
+        present_defer_into->done = f.done;
+        present_defer_into->swapchain = dev.swapchain;
+        return;
+    }
+    present_out(index, qk);
+}
+
+bool present_commit(const PendingPresent& p) {
+    if (!p.used) return false;
+    std::lock_guard lk(present_image_mu);
+    std::unique_lock qk(dev.present_mu);
+    if (p.swapchain != dev.swapchain) return false;   // (made again since the copy: that image is gone)
+    present_out(p.index, qk);
+    return true;
+}
+
+// The present of a swapchain image whose copy is submitted, as present_image ended before; qk holds dev.present_mu
+static void present_out(uint32_t index, std::unique_lock<std::mutex>& qk) {
+    VkResult res;
     VkPresentInfoKHR pi{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
     pi.pNext = reflex_present_id(nullptr);   // (NVIDIA Reflex: the frame's present id, and its present's markers)
     pi.waitSemaphoreCount = 1;
@@ -4184,6 +4241,11 @@ bool replay_start() {
 /// (hookshot) The host's camera jitter (nx2/oot_jitter.py, host/rx_backend.c): the scene's size while a temporal upscaler
 /// draws, NVIDIA DLSS or AMD FSR 4 (vk_temporal.cpp) or AMD FSR 3.1 (vk_fsr3_inputs.cpp), whichever it is (one at a time: the
 /// Upscaler row); 0, no jitter, otherwise
+void jitter_sample(MkwVkJitter* out) {
+    *out = temporal_jitter_sample();
+    if (!out->width) *out = fsr3_inputs::jitter_sample();
+}
+
 int jitter_option(int id) {
     const int axis = id - HOS_OPT_DLSS_JITTER_W;
     const uint32_t d = temporal_jitter_size(axis);
@@ -4214,11 +4276,16 @@ void fill_replay_table(MkwVkRenderer& t) {
         if (id == HOS_OPT_HDR_PEAK) return std::clamp(opts.hdr_peak, 400, 10000);
         if (id == HOS_OPT_HDR_WHITE) return std::clamp(opts.hdr_white, 80, 500);
         if (id == HOS_OPT_DISCORD) return opts.discord != 0;
+        if (id == HOS_OPT_VOLUME) return opts.volume;
+        if (id == HOS_OPT_MUTE_BACKGROUND) return opts.mute_background;
+        if (id == HOS_OPT_DISABLE_CAMERA_CENTERING) return opts.disable_camera_centering;
+        if (id == HOS_OPT_TEXT_SIZE) return opts.text_size;
         return id == 0 ? opts.realtime : id == 1 ? menu_is_open() : id == 2 ? resolution_auto() && !temporal_full_scale() : id == 3 ? (temporal_full_scale() ? 10000 : resolution_scale()) : id == 4 ? opts.pad_background : id == 5 ? opts.text_speed : id == 6 ? opts.mouse_native :
                id == 7 ? opts.mouse_sens : id == 8 ? opts.mouse_invert : id == 9 ? opts.rumble : id == 16 ? opts.invert_cam_x : id == 17 ? opts.invert_cam_y : id == HOS_OPT_GYRO ? opts.gyro : id == HOS_OPT_GYRO_SENS_X ? opts.gyro_sens_x : id == HOS_OPT_GYRO_SENS_Y ? opts.gyro_sens_y : id == HOS_OPT_GYRO_INV_X ? opts.gyro_inv_x : id == HOS_OPT_GYRO_INV_Y ? opts.gyro_inv_y : id == HOS_OPT_GYRO_DEADZONE ? opts.gyro_deadzone :
                id == HOS_OPT_DLSS_JITTER_W || id == HOS_OPT_DLSS_JITTER_H || id == HOS_OPT_DLSS_JITTER_PHASES ? jitter_option(id) : 0;
     };
     t.option_set = menu_option_set;
+    t.jitter_sample = jitter_sample;
     t.nvn_register_sampler = register_sampler_queued;
     t.nvn_set_texture_pool_size = set_texture_pool_size;
     t.nvn_texture_released = texture_released_of;

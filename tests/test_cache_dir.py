@@ -106,6 +106,13 @@ class CacheDirTests(unittest.TestCase):
         self.assertIn("cache_readonly()", block(draw, "void pipeline_cache_save(").split("\n")[1])
         self.assertIn("cache_readonly()", block(draw, "void pipeline_note("))
         self.assertIn("cache_readonly()", block(draw, "void state_record(const Program& p, const NvnState& s, const Targets& at, VkPrimitiveTopology topo, const uint8_t color_types[8]) {"))
+        # (Hookshot's play files, kept beside the pipeline cache: none written, and at the start none removed or written
+        # into the one file)
+        self.assertIn('pcache_path = cache_path("mkw_vk_pipelines.bin")', block(draw, "void pcache_init("))
+        self.assertIn("if (cache_readonly()) return;", block(draw, "void play_cache_save("))
+        merge = block(draw, "size_t play_files_merge(")
+        self.assertIn("if (!cache_readonly()) remove(path.c_str());", merge)
+        self.assertIn("merged.size() >= kPlayFilesKept && !cache_readonly()", merge)
         # (the prepare's file and marker)
         prep = block(draw, "bool prepare_run(")
         self.assertIn("cache_readonly()", block(draw, "void prepared_write(").split("\n")[1])

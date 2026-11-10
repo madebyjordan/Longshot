@@ -340,6 +340,9 @@ public partial class MainWindow
         }
         int? workers = null;
         try { workers = BuildWorkers.Selected(WorkerBox.SelectedItem); } catch (ArgumentException) { }
+        // (the build memory as saved, as the builder's own update takes it, BeginUpdate: no menu of options is shown here. Tools
+        // from before the choice do not read it)
+        var memoryGb = BuilderSettings.Load(SettingsPath)?.MemoryGb is int gb && gb > 0 ? gb : (int?)null;
         // (as the builder's own update does it, UpdateBuild: a folder built with NVIDIA DLSS, its license accepted then, is built
         // with it again; the build files where the player chose)
         var dlss = File.Exists(System.IO.Path.Combine(launchFolder, "ngx", "nvngx_dlss.dll")) &&
@@ -350,7 +353,7 @@ public partial class MainWindow
         // (the shaders' step, left to the game's first start when the player unticked it: said only to tools that know the
         // word. A version from before the step has none to leave, and would stop on an argument it does not know)
         if (!BuilderSettings.PrepareNow(SettingsPath) && KnowsShaderStep(tools!)) args.Add(ShaderStep.Later);
-        launchRunner = new Runner(tools!, args, workers, dlss ? Storage.NgxSdk : null);
+        launchRunner = new Runner(tools!, args, workers, dlss ? Storage.NgxSdk : null, memoryGb);
         launchRunner.Line += l => Dispatcher.BeginInvoke(() => WorkLine(l));
         launchRunner.Finished += failure => Dispatcher.BeginInvoke(() => WorkEnded(failure));
         launchRunner.Start();

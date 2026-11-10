@@ -701,6 +701,9 @@
                 <TextBlock x:Name="WorkerLabel" Style="{StaticResource Line}" Text="Build" Margin="0,40,0,12"/>
                 <ComboBox x:Name="WorkerBox" Style="{StaticResource MenuChoice}" Tag="Workers: " IsEditable="False" AutomationProperties.Name="Build workers"
                           ToolTip="Automatic uses available memory and any existing worker override. More workers need more memory and may not be faster."/>
+                <!-- (Hookshot's build memory choice, BuildWorkers.cs, as a row of this menu; not in Paper's drawing) -->
+                <ComboBox x:Name="MemoryBox" Style="{StaticResource MenuChoice}" Tag="Memory: " IsEditable="False" Margin="0,4,0,0" AutomationProperties.Name="Build memory"
+                          ToolTip="How much memory the build may take, in GB. Automatic leaves free memory to your other programs. A number lets the compilers take that many GB together, even if your other programs need it: close them, or the PC may slow down."/>
                 <!-- the build files: how much and where (Storage.cs) under the pointer, and choosing the place by a press -->
                 <Button x:Name="WorkChange" Style="{StaticResource RowInk}" Margin="0,4,0,0" Click="BrowseWork" AutomationProperties.Name="Where the build files are kept">
                   <Button.ToolTip>
