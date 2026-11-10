@@ -7,44 +7,26 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Shell;
+using static HookshotBuilder.LaunchList;
 
 namespace HookshotBuilder;
 
-/// One version in the launcher's bar: a release (played in the launch folder, which is updated or built again to it first
-/// when it holds another), or a dev build in a folder beside it (nx2/version.py names it "pre-1.1.0 6353e9b";
-/// scripts/build-game.ps1 makes one and writes its hookshot_build.txt)
-sealed class LaunchChoice
-{
-    static readonly Brush PickedInk = Frozen(0xEB, 0xB0, 0x7E), RowInk = Frozen(0xBC, 0xBC, 0xBC), FaintInk = Frozen(0x74, 0x74, 0x74);
-    static Brush Frozen(byte r, byte g, byte b) { var x = new SolidColorBrush(Color.FromRgb(r, g, b)); x.Freeze(); return x; }
-
-    public string Label { get; init; } = "";
-    public string? Tag { get; init; }      // (a release's tag, v1.0.0)
-    public string? Folder { get; init; }   // (a dev build's folder)
-    public string? Build { get; init; }    // (a dev build's name, "pre-1.1.0 6353e9b")
-    public bool Here { get; init; }        // (on this PC: the release the launch folder holds, or a dev build)
-    public bool Reach { get; init; }       // (not here, and the button brings it: the latest release, or one whose builder is installed)
-    public bool Picked { get; set; }
-    public string Key => Tag != null ? "release:" + Tag : "dev:" + Folder;
-
-    // (the row, MainWindow.xaml's VersionRow: the tick is on the version picked when it is here, the arrow on one the button can bring)
-    public Brush Ink => Picked ? PickedInk : Here || Reach ? RowInk : FaintInk;
-    public Visibility Check => Picked && Here ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility Fetch => !Here && Reach ? Visibility.Visible : Visibility.Collapsed;
-    public string? Tip => Folder != null ? Folder : Here ? null : Reach ? "Not on this PC yet" : "Not on this PC";
-}
-
+/// The launcher: Longshot.exe in a game folder opens the builder with --launch <folder> (builder/setup/setup.c). What its bar of
+/// versions holds is decided in LaunchList.cs; this is the window around it
 public partial class MainWindow
 {
-    readonly List<LaunchChoice> launchChoices = new();
-    List<string> launchTags = new();   // (GitHub's releases, as last answered)
-    string? launchBuilt;               // (the release the launch folder holds)
-    string? launchPick;                // (the version picked: its key)
-    bool launchChecking, launchChecked, versionsOpen;
-    enum Go { Play, Update, Switch, None }
+    static readonly Brush QuietInk = Frozen(0xBC, 0xBC, 0xBC), NewsInk = Frozen(0xEB, 0xB0, 0x7E);
+    static Brush Frozen(byte r, byte g, byte b) { var x = new SolidColorBrush(Color.FromRgb(r, g, b)); x.Freeze(); return x; }
+
+    Lists? launchLists;                          // (the bar's lists, as last made)
+    List<ReleaseInfo> launchReleases = new();    // (GitHub's releases, as last answered)
+    string? launchBuilt;                         // (the release the launch folder holds)
+    string? launchPick;                          // (the version picked: its key)
+    bool launchChecking, launchChecked, versionsOpen, olderOpen;
+    enum Go { Play, Bring, None }                // (Bring: the folder is updated or built again to the version picked first)
     Go launchGo;
 
-    LaunchChoice? Picked => launchChoices.FirstOrDefault(c => c.Picked);
+    LaunchChoice? Picked => launchLists?.Picked;
 
     async void ShowLauncher(string folder)
     {
@@ -57,7 +39,7 @@ public partial class MainWindow
         {
             var full = WindowState == WindowState.Maximized;
             Root.Margin = full ? Glass.Overhang(this) : new Thickness(0);
-            LauncherMax.Content = full ? "" : "";
+            LauncherMax.Content = ((char)(full ? 0xE923 : 0xE922)).ToString();   // (Segoe Fluent Icons: restore, maximise)
             LauncherMax.ToolTip = full ? "Restore" : "Maximize";
             System.Windows.Automation.AutomationProperties.SetName(LauncherMax, full ? "Restore" : "Maximize");
         };
@@ -69,12 +51,15 @@ public partial class MainWindow
         };
         launchBuilt = GameVersion(folder) ?? ReadVersion(folder);
         launchPick = LastChoice(folder);
+        // (development) HOOKSHOT_UI_PREVIEW=versions,older,max,pick=release:v1.1.0 (any of them): the bar of versions open from the
+        // start, its older releases unfolded, the window maximised, that version picked
+        var preview = (Environment.GetEnvironmentVariable("HOOKSHOT_UI_PREVIEW") ?? "").Split(',', StringSplitOptions.TrimEntries);
+        if (preview.FirstOrDefault(p => p.StartsWith("pick=")) is { } pick) launchPick = pick[5..];
+        olderOpen = preview.Contains("older");
         // (what is on this PC at once; GitHub's releases when they come)
         FillChoices();
-        // (development) HOOKSHOT_UI_PREVIEW=versions: the bar of versions open from the start; max: the window maximised
-        var preview = Environment.GetEnvironmentVariable("HOOKSHOT_UI_PREVIEW");
-        if (preview == "versions") ShowVersions(true, atOnce: true);
-        if (preview == "max") WindowState = WindowState.Maximized;
+        if (preview.Contains("versions")) ShowVersions(true, atOnce: true);
+        if (preview.Contains("max")) WindowState = WindowState.Maximized;
         await CheckReleases(say: false);
         // (development) HOOKSHOT_UI_SHOT=<file.png>: the window as drawn, once the releases are in, and out (the window opens away
         // from the screen and takes no keys, MainWindow's constructor)
@@ -117,24 +102,28 @@ public partial class MainWindow
         launchChecking = true;
         LauncherCheck.IsHitTestVisible = false;
         LauncherCheck.Content = "Checking…";
-        List<string> tags;
+        List<ReleaseInfo> found;
         string? latest;
-        // (development) HOOKSHOT_LATEST_TAG=v1.1.0,v1.0.0: the releases, the latest first, instead of GitHub's; none: no answer
+        // (development) HOOKSHOT_LATEST_TAG=v1.2.0-rc.1,v1.1.0,v1.0.0?: the releases instead of GitHub's, newest first. One with
+        // a part after its numbers is a pre-release, the first without is the latest, one ending in ? has no builder to
+        // download; none: no answer
         if (Environment.GetEnvironmentVariable("HOOKSHOT_LATEST_TAG") is { Length: > 0 } fake)
         {
-            tags = fake == "none" ? new List<string>() : fake.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
-            latest = tags.FirstOrDefault();
+            found = fake == "none" ? new List<ReleaseInfo>()
+                : fake.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                      .Select(t => new ReleaseInfo(t.TrimEnd('?'), IsPre(t), !t.EndsWith('?'))).ToList();
+            latest = found.FirstOrDefault(r => !r.Pre)?.Tag;
         }
         else
-            (tags, latest) = await Updater.Releases();
+            (found, latest) = await Updater.Releases();
         // (no answer: the releases of the check before stay)
-        if (latest != null || latestTag == null) (launchTags, latestTag) = (tags, latest);
+        if (found.Count > 0 || launchReleases.Count == 0) (launchReleases, latestTag) = (found, latest);
         updateTarget = latestTag ?? Tools.Find()?.Version;
         launchChecked = true;
         FillChoices();
         if (say)
         {
-            LauncherCheck.Content = latest == null ? "Could not check" : SameTag(latest, launchBuilt) ? "Up to date" : VersionName(latest) + " is out";
+            LauncherCheck.Content = found.Count == 0 ? "Could not check" : NewerOut() ? VersionName(latestTag!) + " is out" : "Up to date";
             await Task.Delay(2400);
         }
         LauncherCheck.Content = "Check for updates";
@@ -144,48 +133,24 @@ public partial class MainWindow
 
     async void LauncherCheckClick(object sender, RoutedEventArgs e) => await CheckReleases(say: true);
 
-    /// The bar's three lists, from the releases (GitHub's, this folder's, the builders installed here), newest first, and the dev
-    /// builds beside the folder. The version picked last time for this folder is picked again, else the one the folder holds
+    /// (the latest release is ahead of the one this folder holds)
+    bool NewerOut() => latestTag != null && launchBuilt != null && IsRelease(launchBuilt) && Newer(latestTag, launchBuilt);
+
+    /// The bar's lists (LaunchList.cs), from GitHub's releases, this folder's, the builders installed here and the dev builds
+    /// beside the folder. The version picked last time for this folder is picked again, else the one the folder holds
     void FillChoices()
     {
-        var builders = InstalledTools();
-        var all = new HashSet<string>(launchTags, StringComparer.OrdinalIgnoreCase);
-        if (launchBuilt != null && IsRelease(launchBuilt)) all.Add(launchBuilt);
-        foreach (var t in builders.Keys) all.Add(t);
-        var rebuilds = GameVersion(launchFolder) != null;   // (the folder keeps its game files: it can be built as another release)
-        launchChoices.Clear();
-        foreach (var tag in all.OrderByDescending(ReleaseOrder))
-        {
-            var here = SameTag(tag, launchBuilt);
-            launchChoices.Add(new LaunchChoice
-            {
-                Tag = tag,
-                Label = VersionName(tag) + (SameTag(tag, latestTag) ? " - Latest" : ""),
-                Here = here,
-                Reach = !here && rebuilds && (SameTag(tag, latestTag) || builders.ContainsKey(tag)),
-            });
-        }
-        // ("pre-1.1.0 6353e9b", nx2/version.py: dev is the next release before it is out; an older build said "dev 86148ce")
-        foreach (var (dir, build) in DevBuilds(launchFolder))
-            launchChoices.Add(new LaunchChoice { Folder = dir, Build = build, Label = build, Here = true });
-        var pick = launchChoices.FirstOrDefault(c => c.Key == launchPick)
-                   ?? launchChoices.FirstOrDefault(c => SameTag(c.Tag, launchBuilt))
-                   ?? launchChoices.FirstOrDefault(c => c.Here)
-                   ?? launchChoices.FirstOrDefault();
-        if (pick != null) pick.Picked = true;
-
-        // (the latest release, when the folder holds an older one, has its own list above what is here)
-        var built = launchBuilt != null && IsRelease(launchBuilt) ? ReleaseOrder(launchBuilt) : null;
-        var onPc = launchChoices.Where(c => c.Here).ToList();
-        var fresh = launchChoices.Where(c => !c.Here && SameTag(c.Tag, latestTag) && (built == null || ReleaseOrder(c.Tag!) > built)).ToList();
-        var other = launchChoices.Where(c => !c.Here && !fresh.Contains(c)).ToList();
-        NewList.ItemsSource = fresh;
-        HereList.ItemsSource = onPc;
-        OtherList.ItemsSource = other;
-        NewVersions.Visibility = fresh.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        HereVersions.Visibility = onPc.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        OtherVersions.Visibility = other.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        OtherTitle.Text = built != null && other.Any(c => ReleaseOrder(c.Tag!) > built) ? "Other versions" : "Older versions";
+        launchLists = Make(launchReleases, latestTag, launchBuilt, InstalledTools().Keys, DevBuilds(launchFolder),
+                           GameVersion(launchFolder) != null, launchPick, olderOpen);
+        ReleaseList.ItemsSource = launchLists.Releases;
+        PreList.ItemsSource = launchLists.Pre;
+        DevList.ItemsSource = launchLists.Dev;
+        ReleaseVersions.Visibility = launchLists.Releases.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        PreVersions.Visibility = launchLists.Pre.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        DevVersions.Visibility = launchLists.Dev.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        FoldRow.Visibility = launchLists.Older > 0 ? Visibility.Visible : Visibility.Collapsed;
+        FoldText.Text = launchLists.Folded ? $"{launchLists.Older} older releases" : "Fewer releases";
+        FoldTurn.ScaleY = launchLists.Folded ? 1 : -1;   // (the arrow points down while they are folded, up to fold them again)
         ShowGo();
     }
 
@@ -196,11 +161,25 @@ public partial class MainWindow
         FillChoices();
     }
 
+    void LauncherFoldClick(object sender, RoutedEventArgs e)
+    {
+        olderOpen = !olderOpen;
+        FillChoices();
+    }
+
+    /// (the builder of a release, when it is installed here: its tools build the folder as that release with nothing downloaded)
+    static Tools? BuilderHere(string tag)
+    {
+        foreach (var (version, tools) in InstalledTools())
+            if (SameTag(version, tag)) return tools;
+        return null;
+    }
+
     /// What the button does for the version picked; its name under the button, and a line under that when there is one to say
     void ShowGo()
     {
         var c = Picked;
-        var text = "";
+        var (text, news, verb) = ("", false, "Play");
         if (c == null)
         {
             launchGo = Go.None;
@@ -210,35 +189,38 @@ public partial class MainWindow
             launchGo = File.Exists(GameExe(c.Folder)) ? Go.Play : Go.None;
             text = $"In {System.IO.Path.GetFileName(c.Folder)}, with its own saves and settings";
         }
-        else if (SameTag(c.Tag, launchBuilt))
+        else if (c.Here)
         {
             launchGo = File.Exists(GameExe(launchFolder)) ? Go.Play : Go.None;
-            text = latestTag == null ? (launchChecked ? "Could not check for updates" : "")
-                 : SameTag(latestTag, launchBuilt) ? ""
-                 : $"{VersionName(latestTag)} is out: it is in All Versions";
+            if (NewerOut()) (text, news) = ($"{VersionName(latestTag!)} is out", true);
+            else if (launchChecked && launchReleases.Count == 0) text = "Could not check for updates";
         }
-        else if (SameTag(c.Tag, latestTag) && GameVersion(launchFolder) != null)
+        else if (c.Reach)
         {
-            launchGo = Go.Update;
-            text = $"Updates this game to {VersionName(c.Tag!)}. Your saves and settings stay.";
-        }
-        else if (GameVersion(launchFolder) != null && InstalledTools().ContainsKey(c.Tag!))
-        {
-            launchGo = Go.Switch;
-            text = $"Builds this game again as {VersionName(c.Tag!)} (as long as an update). Your saves and settings stay.";
+            // (the folder holds one release at a time: another one takes its place. One behind it that has to be downloaded
+            // comes with its own builder, which the setup makes the one installed)
+            var ahead = launchBuilt == null || !IsRelease(launchBuilt) || Newer(c.Tag!, launchBuilt);
+            launchGo = Go.Bring;
+            verb = ahead ? "Update" : "Switch";
+            var was = launchBuilt != null ? VersionName(launchBuilt) : "the game";
+            text = ahead || BuilderHere(c.Tag!) != null
+                ? $"Replaces {was} in this folder. Your saves and settings stay."
+                : $"Goes back to {VersionName(c.Tag!)}, and Longshot Builder with it. Your saves and settings stay.";
         }
         else
         {
             launchGo = Go.None;
             text = GameVersion(launchFolder) == null
                 ? "This folder was built before it kept its game files: build it again with the Longshot Builder"
-                : $"{VersionName(c.Tag!)} is not on this PC: only the latest release can be downloaded here";
+                : $"{VersionName(c.Tag!)} is not on this PC, and its release has no builder to download";
         }
-        LauncherGoText.Text = launchGo switch { Go.Update => "Update", Go.Switch => "Switch", _ => "Play" };
+        LauncherGoText.Text = verb;
         LauncherGo.IsEnabled = launchGo != Go.None;
-        LauncherVersion.Content = c?.Label ?? "No game in this folder";
+        LauncherVersion.Content = c?.Title ?? "No game in this folder";
         LauncherVersion.IsHitTestVisible = c != null;
         LauncherStatus.Text = text;
+        LauncherStatus.Foreground = news ? NewsInk : QuietInk;
+        LauncherAll.Tag = NewerOut() ? "news" : null;   // (the dot on All Versions: a newer release is in there)
     }
 
     void LauncherGoClick(object sender, RoutedEventArgs e)
@@ -251,14 +233,15 @@ public partial class MainWindow
                 StartGame(c.Folder ?? launchFolder);
                 Application.Current.Shutdown();
                 break;
-            case Go.Update:
-                LauncherWindow(false);
-                Updater.UpdateFolder(this, launchFolder, c.Tag, fetched: false);
-                break;
-            case Go.Switch when InstalledTools().TryGetValue(c.Tag!, out var tools):
+            case Go.Bring when BuilderHere(c.Tag!) is { } tools:
                 LauncherWindow(false);
                 BeginUpdate(launchFolder, c.Tag);
                 UpdateBuild(tools, launchFolder);
+                break;
+            case Go.Bring:
+                // (the latest release as before; any other by its own tag: a pre-release, or one to go back to)
+                LauncherWindow(false);
+                Updater.UpdateFolder(this, launchFolder, c.Tag, fetched: false, exact: !SameTag(c.Tag, latestTag));
                 break;
         }
     }
@@ -390,11 +373,6 @@ public partial class MainWindow
         catch (Exception) { }
         return found;
     }
-
-    static bool IsRelease(string tag) => System.Text.RegularExpressions.Regex.IsMatch(tag, @"^v?\d+\.\d+\.\d+$");
-    static bool SameTag(string? a, string? b) => a != null && b != null && string.Equals(a.TrimStart('v'), b.TrimStart('v'), StringComparison.OrdinalIgnoreCase);
-    static Version ReleaseOrder(string tag) => Version.TryParse(tag.TrimStart('v', 'V').Split('-')[0], out var v) ? v : new Version(0, 0);
-    static string VersionName(string tag) => "v" + tag.TrimStart('v', 'V');   // (as the launcher writes a release: v1.0.0)
 
     // ---- the choice, kept per game folder: launcher.json beside the versions ----
 

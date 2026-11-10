@@ -325,7 +325,7 @@
     </Grid>
 
     <!-- ===================== the launcher: Longshot.exe in a game folder (launch mode, builder/setup/setup.c) =====================
-         The game's front door, as drawn in Paper (the file Longshot: "Launcher" and "Launcher - Version List", 960 x 640): the
+         The game's front door, as drawn in Paper (the file Longshot: "Launcher" and the "v2" artboards, 960 x 640): the
          wordmark over a dim picture of the game, one button that plays the version picked (or updates or builds the folder to it
          first), and All Versions, a bar from the left with what is on this PC and the releases that are not (Launcher.cs) -->
     <Border x:Name="LauncherScreen" Visibility="Collapsed" Panel.ZIndex="8" Background="#121212" MouseLeftButtonDown="LauncherBackClick">
@@ -334,6 +334,7 @@
           <FontFamily x:Key="Serif">pack://application:,,,/Fonts/#Marcellus</FontFamily>
           <FontFamily x:Key="Icons">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
           <SolidColorBrush x:Key="Leather" Color="#815E40"/>
+          <BooleanToVisibilityConverter x:Key="Shown"/>
           <!-- the wordmark's letters, as drawn (in their drawing they start at 131.803, 12.673 and are 561.741 x 86.14) -->
           <GeometryGroup x:Key="Wordmark" FillRule="Nonzero">
             <PathGeometry FillRule="EvenOdd" Figures="M173.946 88.3678L184.037 62.7213L188.356 51.7414V65.7597V96.7783H131.803L141.455 88.3678V23.3899L131.803 14.9794H171.499L161.711 23.3899V88.3678H173.946Z"/>
@@ -375,10 +376,16 @@
                   <Grid>
                     <Border Background="{TemplateBinding Background}" CornerRadius="18"/>
                     <Border x:Name="Shine" Background="#FFFFFF" CornerRadius="18" Opacity="0"/>
-                    <TextBlock Style="{StaticResource Line}" Text="{TemplateBinding Content}" Margin="{TemplateBinding Padding}"
-                               HorizontalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" Margin="{TemplateBinding Padding}" HorizontalAlignment="Center">
+                      <!-- (a dot before the word when the button's Tag is "news": All Versions, when a newer release is out) -->
+                      <Ellipse x:Name="Dot" Width="8" Height="8" Fill="#EBB07E" Margin="-4,0,10,0" VerticalAlignment="Center" Visibility="Collapsed"/>
+                      <TextBlock Style="{StaticResource Line}" Text="{TemplateBinding Content}"/>
+                    </StackPanel>
                   </Grid>
                   <ControlTemplate.Triggers>
+                    <Trigger Property="Tag" Value="news">
+                      <Setter TargetName="Dot" Property="Visibility" Value="Visible"/>
+                    </Trigger>
                     <Trigger Property="IsMouseOver" Value="True">
                       <Setter TargetName="Shine" Property="Opacity" Value="0.1"/>
                     </Trigger>
@@ -434,33 +441,49 @@
             <Setter Property="Template">
               <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                  <Border x:Name="Box" Background="Transparent" TextElement.Foreground="{TemplateBinding Foreground}">
+                  <Border Background="Transparent">
                     <ContentPresenter/>
                   </Border>
-                  <ControlTemplate.Triggers>
-                    <Trigger Property="IsMouseOver" Value="True">
-                      <Setter TargetName="Box" Property="TextElement.Foreground" Value="#FFFFFF"/>
-                    </Trigger>
-                  </ControlTemplate.Triggers>
                 </ControlTemplate>
               </Setter.Value>
             </Setter>
+            <!-- (its text and its mark read the button's Foreground: white under the pointer) -->
+            <Style.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Foreground" Value="#FFFFFF"/>
+              </Trigger>
+            </Style.Triggers>
+          </Style>
+          <Style x:Key="FoldInk" TargetType="Button" BasedOn="{StaticResource Row}">
+            <Setter Property="Foreground" Value="#8E8E8E"/>
+          </Style>
+          <!-- (its ink: the version picked in the accent, one nothing can bring dim. LaunchList.cs) -->
+          <Style x:Key="VersionInk" TargetType="Button" BasedOn="{StaticResource Row}">
+            <Setter Property="Foreground" Value="#BCBCBC"/>
+            <Style.Triggers>
+              <DataTrigger Binding="{Binding Dim, Mode=OneTime}" Value="True">
+                <Setter Property="Foreground" Value="#747474"/>
+              </DataTrigger>
+              <DataTrigger Binding="{Binding Picked, Mode=OneTime}" Value="True">
+                <Setter Property="Foreground" Value="#EBB07E"/>
+              </DataTrigger>
+            </Style.Triggers>
           </Style>
           <DataTemplate x:Key="VersionRow">
-            <Button Style="{StaticResource Row}" Foreground="{Binding Ink, Mode=OneTime}" ToolTip="{Binding Tip, Mode=OneTime}" Click="LauncherRowClick"
+            <Button Style="{StaticResource VersionInk}" ToolTip="{Binding Tip, Mode=OneTime}" Click="LauncherRowClick"
                     AutomationProperties.Name="{Binding Label, Mode=OneTime}">
               <Grid Height="40">
                 <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="24"/></Grid.ColumnDefinitions>
                 <TextBlock Style="{StaticResource Line}" Text="{Binding Label, Mode=OneTime}" Margin="0,0,8,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                           Foreground="{Binding (TextElement.Foreground), RelativeSource={RelativeSource AncestorType=Border}}"/>
+                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                 <Canvas Grid.Column="1" Width="24" Height="24" VerticalAlignment="Center">
                   <Path Data="M4.5,12.75 l6,6 l9,-13.5" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
-                        Visibility="{Binding Check, Mode=OneTime}"
-                        Stroke="{Binding (TextElement.Foreground), RelativeSource={RelativeSource AncestorType=Border}}"/>
+                        Visibility="{Binding Ticked, Mode=OneTime, Converter={StaticResource Shown}}"
+                        Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                   <Path Data="M3,16.5 v2.25 A2.25,2.25 0 0 0 5.25,21 h13.5 A2.25,2.25 0 0 0 21,18.75 V16.5 M16.5,12 L12,16.5 L7.5,12 M12,16.5 V3"
                         StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
-                        Visibility="{Binding Fetch, Mode=OneTime}"
-                        Stroke="{Binding (TextElement.Foreground), RelativeSource={RelativeSource AncestorType=Border}}"/>
+                        Visibility="{Binding Arrow, Mode=OneTime, Converter={StaticResource Shown}}"
+                        Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                 </Canvas>
               </Grid>
             </Button>
@@ -588,7 +611,8 @@
         <Button x:Name="LauncherVersion" Style="{StaticResource Pill}" Background="Transparent" Padding="42,8" VerticalAlignment="Bottom"
                 HorizontalAlignment="Center" Margin="0,0,0,38" ToolTip="Open the game folder" Click="LauncherFolderClick"/>
         <TextBlock x:Name="LauncherStatus" FontFamily="Segoe UI" FontSize="13" Foreground="#BCBCBC" VerticalAlignment="Bottom" HorizontalAlignment="Center"
-                   TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="620" Margin="0,0,0,17" IsHitTestVisible="False"/>
+                   TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="620" Margin="0,0,0,19" LineHeight="18"
+                   LineStackingStrategy="BlockLineHeight" IsHitTestVisible="False"/>
 
         <Button x:Name="LauncherAll" Style="{StaticResource Pill}" Content="All Versions" VerticalAlignment="Bottom" HorizontalAlignment="Left"
                 Margin="24,0,0,38" Click="LauncherAllClick"/>
@@ -632,7 +656,8 @@
           </Button>
         </StackPanel>
 
-        <!-- All Versions: what is on this PC and what is not, picked by a press. Anywhere else in the window closes it -->
+        <!-- All Versions: the releases, the pre-releases and the dev builds, picked by a press (Paper: "v2 - Version List by channel").
+             Anywhere else in the window closes it -->
         <Border x:Name="VersionBar" Visibility="Collapsed" HorizontalAlignment="Left" Width="240" Background="#B0000000"
                 BorderBrush="#303030" BorderThickness="0,0,1,0" MouseLeftButtonDown="LauncherBarClick">
           <Border.RenderTransform><TranslateTransform x:Name="VersionBarSlide"/></Border.RenderTransform>
@@ -641,23 +666,42 @@
               <TextBlock Style="{StaticResource Line}" Text="All Versions"/>
               <Button x:Name="LauncherCheck" Style="{StaticResource Pill}" Background="{StaticResource Leather}" Content="Check for updates"
                       MinWidth="176" HorizontalAlignment="Left" Margin="0,12,0,0" Click="LauncherCheckClick"/>
-              <StackPanel x:Name="NewVersions" Margin="0,40,0,0" Visibility="Collapsed">
-                <TextBlock Style="{StaticResource Line}" Text="Update available"/>
-                <ItemsControl x:Name="NewList" ItemTemplate="{StaticResource VersionRow}" Margin="0,12,0,0" Focusable="False"/>
+              <!-- (a list with nothing in it is not shown: most players see Releases alone) -->
+              <StackPanel x:Name="ReleaseVersions" Margin="0,40,0,0" Visibility="Collapsed">
+                <TextBlock Style="{StaticResource Line}" Text="Releases"/>
+                <ItemsControl x:Name="ReleaseList" ItemTemplate="{StaticResource VersionRow}" Margin="0,12,0,-4" Focusable="False">
+                  <ItemsControl.ItemContainerStyle>
+                    <Style TargetType="ContentPresenter"><Setter Property="Margin" Value="0,0,0,4"/></Style>
+                  </ItemsControl.ItemContainerStyle>
+                </ItemsControl>
+                <!-- (the releases before the two newest, in one row until it is pressed) -->
+                <Button x:Name="FoldRow" Style="{StaticResource FoldInk}" Margin="0,4,0,0" Visibility="Collapsed" Click="LauncherFoldClick"
+                        AutomationProperties.Name="{Binding Text, ElementName=FoldText}">
+                  <Grid Height="40">
+                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="24"/></Grid.ColumnDefinitions>
+                    <TextBlock x:Name="FoldText" Style="{StaticResource Line}" VerticalAlignment="Center"
+                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                    <Canvas Grid.Column="1" Width="24" Height="24" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+                      <Canvas.RenderTransform><ScaleTransform x:Name="FoldTurn"/></Canvas.RenderTransform>
+                      <Path Data="M19.5,8.25 l-7.5,7.5 l-7.5,-7.5" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                            Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                    </Canvas>
+                  </Grid>
+                </Button>
               </StackPanel>
-              <StackPanel x:Name="HereVersions" Margin="0,40,0,0" Visibility="Collapsed">
-                <TextBlock Style="{StaticResource Line}" Text="Installed"/>
-                <ItemsControl x:Name="HereList" ItemTemplate="{StaticResource VersionRow}" Margin="0,12,0,-4" Focusable="False">
+              <StackPanel x:Name="PreVersions" Margin="0,40,0,0" Visibility="Collapsed">
+                <TextBlock Style="{StaticResource Line}" Text="Pre-releases"/>
+                <ItemsControl x:Name="PreList" ItemTemplate="{StaticResource VersionRow}" Margin="0,12,0,-4" Focusable="False">
                   <ItemsControl.ItemContainerStyle>
                     <Style TargetType="ContentPresenter"><Setter Property="Margin" Value="0,0,0,4"/></Style>
                   </ItemsControl.ItemContainerStyle>
                 </ItemsControl>
               </StackPanel>
-              <StackPanel x:Name="OtherVersions" Margin="0,40,0,0" Visibility="Collapsed">
-                <TextBlock x:Name="OtherTitle" Style="{StaticResource Line}" Text="Older versions"/>
-                <ItemsControl x:Name="OtherList" ItemTemplate="{StaticResource VersionRow}" Margin="0,12,0,-12" Focusable="False">
+              <StackPanel x:Name="DevVersions" Margin="0,40,0,0" Visibility="Collapsed">
+                <TextBlock Style="{StaticResource Line}" Text="Dev builds"/>
+                <ItemsControl x:Name="DevList" ItemTemplate="{StaticResource VersionRow}" Margin="0,12,0,-4" Focusable="False">
                   <ItemsControl.ItemContainerStyle>
-                    <Style TargetType="ContentPresenter"><Setter Property="Margin" Value="0,0,0,12"/></Style>
+                    <Style TargetType="ContentPresenter"><Setter Property="Margin" Value="0,0,0,4"/></Style>
                   </ItemsControl.ItemContainerStyle>
                 </ItemsControl>
               </StackPanel>

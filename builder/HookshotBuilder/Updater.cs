@@ -34,11 +34,12 @@ static class Updater
         UpdateFolder(w, folder, tag, fetched);
     }
 
-    /// (the launcher's version list) Every published release's tag, newest first, and the latest one (not a pre-release); empty and
-    /// null when GitHub did not answer. One try: the launcher already shows what is on this PC
-    public static async Task<(List<string> Tags, string? Latest)> Releases()
+    /// (the launcher's bar of versions) Every published release, newest first (its tag, whether it is a pre-release, whether it
+    /// holds a builder to download), and the latest one's tag (not a pre-release); empty and null when GitHub did not answer. One
+    /// try: the launcher already shows what is on this PC
+    public static async Task<(List<ReleaseInfo> Releases, string? Latest)> Releases()
     {
-        var tags = new List<string>();
+        var found = new List<ReleaseInfo>();
         string? latest = null;
         try
         {
@@ -53,15 +54,24 @@ static class Updater
                 foreach (var r in doc.RootElement.EnumerateArray())
                 {
                     if (r.GetProperty("draft").GetBoolean() || r.GetProperty("tag_name").GetString() is not { Length: > 0 } tag) continue;
-                    tags.Add(tag);
-                    if (latest == null && !r.GetProperty("prerelease").GetBoolean()) latest = tag;
+                    var pre = r.GetProperty("prerelease").GetBoolean();
+                    var names = new HashSet<string?>();
+                    if (r.TryGetProperty("assets", out var assets))
+                        foreach (var asset in assets.EnumerateArray()) names.Add(asset.GetProperty("name").GetString());
+                    // (what UpdateFolder downloads: the setup and its list, else the whole zip)
+                    found.Add(new ReleaseInfo(tag, pre, names.Contains(Asset) || (names.Contains(SetupAsset) && names.Contains(SetupList))));
+                    if (latest == null && !pre) latest = tag;
                 }
             }
         }
         catch (Exception) { }
-        latest ??= tags.Count == 0 ? await LatestTag() : null;   // (the API's limit: the setup list still names the latest)
-        if (latest != null && !tags.Contains(latest)) tags.Insert(0, latest);
-        return (tags, latest);
+        // (the API's limit: the setup list still names the latest. What it holds is not known then: it is taken to have its builder)
+        if (found.Count == 0 && await LatestTag() is { } named)
+        {
+            latest = named;
+            found.Add(new ReleaseInfo(named, false, true));
+        }
+        return (found, latest);
     }
 
     /// The latest release's tag, quietly (null: GitHub did not answer); a few tries, 20 s at most
@@ -134,9 +144,12 @@ static class Updater
     }
 
     /// The game in folder built again with the latest release: here when these tools are it (or fetched), else after the setup
-    /// installed it (it starts the new builder with --update folder --tag t --fetched)
-    public static async void UpdateFolder(MainWindow w, string folder, string? tag, bool fetched)
+    /// installed it (it starts the new builder with --update folder --tag t --fetched). exact (the launcher, for a version picked
+    /// that is not the latest: a pre-release, or a release to go back to): the release named tag instead of the latest. The setup
+    /// installs the release its --tag names and keeps only that one (builder/setup/setup.c)
+    public static async void UpdateFolder(MainWindow w, string folder, string? tag, bool fetched, bool exact = false)
     {
+        exact &= tag != null;
         w.BeginUpdate(folder, tag);
         var tools = Tools.Find();
         if (tools == null)
@@ -162,12 +175,14 @@ static class Updater
             var token = w.DownloadToken;
             using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
             http.DefaultRequestHeaders.UserAgent.ParseAdd("LongshotBuilder");
-            w.Note("Asking GitHub for the latest release");
+            w.Note(exact ? $"Asking GitHub for {tag}" : "Asking GitHub for the latest release");
             string? newTag = null, url = null, setupUrl = null;
             string? apiUrl = null, setupApiUrl = null;
             long size = 0, setupSize = 0;
             var hasList = false;
-            using (var response = await GetWithRetries(w, http, Latest, token, "application/vnd.github+json", TimeSpan.FromSeconds(30)))
+            var release = exact ? Latest[..Latest.LastIndexOf('/')] + "/tags/" + Uri.EscapeDataString(tag!) : Latest;
+            var which = exact ? tag! : "The latest release";
+            using (var response = await GetWithRetries(w, http, release, token, "application/vnd.github+json", TimeSpan.FromSeconds(30)))
             using (var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token)))
             {
                 newTag = doc.RootElement.GetProperty("tag_name").GetString();
@@ -189,7 +204,7 @@ static class Updater
                     else if (assetName == SetupList) hasList = true;
                 }
             }
-            if (newTag == null || (url == null && setupUrl == null)) throw new InvalidOperationException("The latest release has no " + Asset + ".");
+            if (newTag == null || (url == null && setupUrl == null)) throw new InvalidOperationException(which + " has no " + Asset + ".");
             if (newTag == tools.Version)
             {
                 w.UpdateBuild(tools, folder);
@@ -211,7 +226,7 @@ static class Updater
                 Application.Current.Shutdown();
                 return;
             }
-            if (url == null) throw new InvalidOperationException("The latest release has no " + Asset + ".");
+            if (url == null) throw new InvalidOperationException(which + " has no " + Asset + ".");
             var zip = Path.Combine(cache, "LongshotBuilder-" + name + ".zip");
             w.Note($"Downloading {Asset} of {newTag} ({size >> 20} MB)");
             await DownloadWithRetries(w, http, url, apiUrl, zip, size, token, w.DownloadProgress);
