@@ -56,6 +56,9 @@ if ($Channel -eq "release") {
     if (git -C $src status --porcelain --untracked-files=no) { Write-Warning "$src has changes not committed: the build is named '-dirty'." }
     $env:HOOKSHOT_MINGW = Join-Path $tools "llvm-mingw"   # (a checkout has no llvm-mingw of its own)
     $env:RX_CPM = Join-Path $tools "cpm"
+    # (the translated code and compiled objects are kept, ~4 GB: make_game deletes them after a build unless asked, and every
+    # dev update then took 30 minutes. The release keeps the builder's own way)
+    $env:HOOKSHOT_KEEP_BUILD_FILES = "1"
     $work = Join-Path $env:LOCALAPPDATA "LongshotDev"
     if (Test-Path "$out\image.bin") {
         $makeArgs = @("--update", $out, "--work", $work)
@@ -84,6 +87,12 @@ if ($Channel -eq "dev") {
     $bin = if (Test-Path "$out\bin\hookshot.exe") { "$out\bin" } else { $out }
     foreach ($n in "user", "hookshot_options.ini") {   # (once: the dev folder's own after that)
         if (-not (Test-Path "$out\$n") -and (Test-Path "$game\$n")) { Copy-Item "$game\$n" "$out\$n" -Recurse }
+    }
+    # (SDL2/SDL3 for controllers and wgpu_native for the fallback renderer are loaded at run time, and come with the builder's
+    # tools, not a checkout: without SDL3.dll no controller works)
+    foreach ($from in "$tools\third_party\sdl2\SDL2.dll", "$tools\third_party\sdl2\SDL3.dll", "$tools\wgpu-native\lib\wgpu_native.dll") {
+        $to = Join-Path $bin (Split-Path -Leaf $from)
+        if ((Test-Path $from) -and -not (Test-Path $to)) { Copy-Item $from $to }
     }
     foreach ($n in "amd_fidelityfx_loader_vk.dll", "amd_fidelityfx_upscaler_vk.dll") {
         $from = Join-Path $Longshot "fsr4\$n"
