@@ -7,7 +7,8 @@
 <h4 align="center">The Legend of Zelda: Ocarina of Time (Nintendo Switch 2) running natively on Windows & Linux, with no emulator.</h4>
 
 Longshot is a fork of [Hookshot](https://github.com/NotRexed/Hookshot), the static recompilation of Ocarina of Time for
-Switch 2. It starts from Hookshot v2.0.5 and differs in one way: **nothing is merged untested.**
+Switch 2. It is based on Hookshot's main branch after v2.0.6, adds AMD FSR 4, and differs in one way: **nothing is
+merged untested.**
 
 > [!IMPORTANT]
 > This repository **does not contain the game, keys or an executable**, and it does not explain how to get them. You
@@ -26,16 +27,18 @@ Switch 2. It starts from Hookshot v2.0.5 and differs in one way: **nothing is me
 
 No releases yet; built from source. The main test PC uses an AMD Radeon RX 6700 XT (RDNA2) on Windows 11.
 
-Differences from Hookshot v2.0.5 so far:
+Differences from Hookshot so far:
 
-- **Night lighting**: the sky's ambient light is computed again, so night is dark blue as on the Switch 2 instead of
-  being exposed like day.
+- **AMD FSR 4**: AMD's temporal upscaler (and its Native AA) in the Graphics tab's **Upscaler** row, from Hookshot PR
+  #1008, which Hookshot has not merged yet. Tick **AMD FSR 4** in Longshot Builder; AMD's DLLs are not included (see
+  [AMD FSR 4](docs/hookshot-readme.md#build-from-source)).
 - **AMD terrain grid fix kept on**: Hyrule Field's ground has no grid lines on AMD. (Hookshot turned this fix off in
   v2.0.6.)
+- **BC3 re-encode in runs of up to 8 layers**, as in v2.0.5. (Hookshot made it one layer a run in v2.0.6.)
 
 ## Build
 
-The same as Hookshot v2.0.5: see [Build from source](docs/hookshot-readme.md#build-from-source). The builder is
+The same as Hookshot: see [Build from source](docs/hookshot-readme.md#build-from-source). The builder is
 **Longshot Builder** and the game folder's launcher is **Longshot.exe**; both check Longshot's releases for updates. The
 files inside the game folder keep Hookshot's names (`bin\hookshot.exe`, `hookshot_options.ini`), so a Hookshot
 folder's settings carry over.

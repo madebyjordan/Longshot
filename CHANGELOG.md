@@ -5,7 +5,15 @@ major = changes to saves, settings or the build. Hookshot's history up to v2.0.5
 
 ## 1.0.0 (unreleased)
 
-Based on Hookshot v2.0.5 (`232eecb`).
+Based on Hookshot's main branch after v2.0.6 (`0828863`), with AMD FSR 4 from Hookshot PR #1008. Everything Hookshot
+changed after v2.0.5 comes with it (NVIDIA DLSS and DLAA from #841 among it), except the two changes under "Kept from
+Hookshot v2.0.5".
+
+### Features
+- **AMD FSR 4** and **AMD FSR 4 Native AA** in the Graphics tab's **Upscaler** row: AMD's temporal upscaler in place of
+  the game's own, on the same inputs as DLSS (Hookshot PR #1008 by madebyjordan, not yet in Hookshot). Tick **AMD FSR 4**
+  in Longshot Builder, or `make_game.py --fsr`; AMD's DLLs are not included. See
+  [docs/hookshot-readme.md](docs/hookshot-readme.md#build-from-source). Tested: pending.
 
 ### Fixes
 - Night no longer looks like day: the sky's ambient light (a float add through a `c1` offset) is written again, so the
@@ -28,4 +36,5 @@ Based on Hookshot v2.0.5 (`232eecb`).
 
 ### Kept from Hookshot v2.0.5
 - AMD: terrain textures re-encoded at sizes whose BC levels halve evenly (no grid lines in Hyrule Field). Hookshot
-  v2.0.6 turned this off.
+  v2.0.6 turned this off. `RX_VK_UNEVEN_BC=1` turns it off here.
+- BC3 re-encode of ASTC arrays in runs of up to 8 layers. Hookshot v2.0.6 (#956) made it one layer a run.
