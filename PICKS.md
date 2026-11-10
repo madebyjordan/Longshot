@@ -13,6 +13,8 @@ change not picked one at a time. The two changes under "Not taken" are reverted 
 | AMD FSR 4 and FSR 4 Native AA in the Upscaler row | Hookshot PR #1008 (`d0f32d6`, not yet merged there) | madebyjordan | `a3b0aa3` (merge) | PR #1008 build on madebyjordan's and other players' PCs; RX 6700 XT, Windows 11: FSR 4.1.2 upscales 1536x864 to 2048x1152 |
 | Night lighting: sky ambient float add past a `c1` offset | Longshot (also in Hookshot v2.0.6 as `0b286cc`) | madebyjordan | `517df7e` | RX 6700 XT, Windows 11: night dim deep blue, as on the Switch 2 |
 | Memory-trim test accepts the resized BC3 scratch argument | Hookshot #806 (`65da32c`) | monsterlag | `e7f1c26` | `tests/test_mem_trim.py` passes (it failed on v2.0.5 since #705) |
+| Precompile: compute pipelines with `RX_VK_NOOPT` | Longshot 1.0.0 (`c1db06c`) | madebyjordan | `c37772a` | RX 6700 XT: precompile's compute served by the driver's cache after the shaders' step (tested on 1.0.0) |
+| 8 GB cards: 32 MB image blocks (Hookshot's own 8.5 GB BC3 threshold kept) | Hookshot #887 via Longshot 1.0.0 (`c0ddfc1`) | milal | `bb71908` | RX 6700 XT on 1.0.0: Hyrule Field laps and Castle Town with no black flash |
 
 ## Not taken
 
