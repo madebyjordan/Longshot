@@ -115,6 +115,10 @@ struct Code {
     std::vector<uint8_t> c1;
     uint32_t local[3]{};
     uint32_t shared_memory = 0;   // compute: bytes from the NVN2 control section (+0x64; klimovich008's PR 91)
+    // (hookshot) compute: local memory, bytes a thread, from the control section (+0x68; +0x50 is the same times 32, a warp's).
+    // It was never read: a compute program that spills (LDL/STL) had no local array, and the SPIR-V back end aborted the game
+    // at its first local access. OoT's two largest compute programs have 0xd80
+    uint32_t local_memory = 0;
     uint32_t texture_bound = ~0u;   // the bank native TEX instructions name (~0: none; TEXS take the stage's own)
     bool isbe = false;              // an NVN2 task (stage 6) or mesh (stage 7) program: it writes the internal stage buffer
     // (task / mesh: control section +0x58 threads 15:0, payload bytes 31:16; +0x60 max primitives 15:0, max vertices
@@ -294,6 +298,16 @@ Code parse_code(const uint8_t* ctl, const std::vector<uint8_t>& area) {
     if (!graphics) {
         std::memcpy(c.local, ctl + 0x58, 12);
         std::memcpy(&c.shared_memory, ctl + 0x64, 4);
+        std::memcpy(&c.local_memory, ctl + 0x68, 4);
+        uint32_t warp_local = 0;   // (+0x50: the same times 32, a warp's; a size that does not match it is not trusted)
+        std::memcpy(&warp_local, ctl + 0x50, 4);
+        if (c.local_memory && (uint64_t{c.local_memory} * 32 != warp_local || c.local_memory > (64u << 10))) {
+            static std::atomic<int> told{0};
+            if (told++ < 8)
+                logf("vk: compute program %016llx: local memory %#x a thread, %#x a warp: not used", (unsigned long long)c.key,
+                     c.local_memory, warp_local);
+            c.local_memory = 0;
+        }
     }
     c.ok = true;
     return c;
@@ -387,6 +401,8 @@ public:
         if (st != Shader::Stage::Compute) {
             std::memcpy(&sph, reinterpret_cast<const uint8_t*>(nvn.code.data()), sizeof sph);
             local_memory = static_cast<uint32_t>(sph.LocalMemorySize()) + sph.common3.shader_local_memory_crs_size;
+        } else {
+            local_memory = nvn.local_memory;   // (its control section's: a compute program has no header)
         }
         is_proprietary_driver = true;
     }
@@ -1059,7 +1075,7 @@ uint64_t disk_stamp() {
     const uint32_t depth = host->depth_minus_w() != 0;   // (d3zessete's PR 54: programs made in either depth mode are kept apart)
     add(&depth, sizeof depth);
     // (and a GPU's mesh shaders: a file of native task and mesh programs is no use to the compute fallback, nor its to one)
-    const uint32_t mesh = (dev.mesh_shader ? 1u : 0u) | (dev.mesh_fallback ? 2u : 0u);
+    const uint32_t mesh = (dev.mesh_shader ? 1u : 0u) | (dev.mesh_fallback ? 2u : 0u) | (dev.task_mesh_fallback ? 4u : 0u);
     add(&mesh, sizeof mesh);
     // (and what of the GPU the translator is told (make_profile): its warps' lanes and the driver's shuffle workaround, and
     // which stages it pins to 32 lanes, which keep the short path: profile_graphics)
@@ -1711,7 +1727,7 @@ void translate_mesh_into(Program& p, const NvnState& s, const Code* task, const 
         Shader::Backend::Bindings bindings{};
         std::vector<std::vector<uint32_t>> kept;   // (each stage's SPIR-V, for the program cache: mesh programs were never kept,
                                                    // so each was translated and its pipeline built in the middle of play, every run)
-        const bool fallback{dev.mesh_fallback};   // (no mesh shaders: compute stages and a generated vertex stage)
+        const bool fallback = p.fallback;
         std::unique_ptr<Translation> task_t;
         const std::array<u32, 3> mesh_regs = mesh_registers_of(task, mesh);
         if (task) {
@@ -1903,6 +1919,7 @@ const Program* mesh_program_locked(const NvnState& s, const uint8_t color_types[
     static int logged;
     if (logged++ < 6) log_program_stages(s, "mesh draw");
     if (!mesh) return nullptr;
+    const bool fallback = dev.uses_mesh_fallback(task != nullptr);
     const uint64_t key = mesh_key(task, *mesh, fsc, prim, color_types);
     auto& variants = programs[key];
     program_cache_load(key, variants);
@@ -1910,7 +1927,7 @@ const Program* mesh_program_locked(const NvnState& s, const uint8_t color_types[
     for (auto& p : variants)
         if (!p->codes[0]) std::memcpy(p->codes, codes, sizeof codes);
     for (auto& p : variants) {
-        if (p->mesh != dev.mesh_shader || p->fallback != dev.mesh_fallback) continue;   // (another GPU's: native or fallback)
+        if (p->fallback != fallback || p->mesh == fallback) continue;
         if (!p->ready.load(std::memory_order_acquire)) return p.get();
         if (p->failed) return nullptr;
         if (still_valid(s, *p)) return p.get();
@@ -1918,8 +1935,8 @@ const Program* mesh_program_locked(const NvnState& s, const uint8_t color_types[
     miss_note(key, "mesh", mesh->key, fsc ? fsc->key : 0, s, color_types, variants.size());
     auto p = std::make_unique<Program>();
     p->key = key;
-    p->mesh = dev.mesh_shader;   // (not a native mesh program: a fallback one is an ordinary graphics pipeline)
-    p->fallback = !dev.mesh_shader;   // (the GPU has no mesh shaders: its stages are compute and vertex)
+    p->mesh = !fallback;
+    p->fallback = fallback;
     std::memcpy(p->codes, codes, sizeof codes);
     Program* raw = p.get();
     variants.push_back(std::move(p));
@@ -2512,8 +2529,11 @@ std::unique_ptr<Program> seed_translate(const SeedStage* const by_stage[8], cons
     auto p = std::make_unique<Program>();
     p->key = key;
     p->compute = by_stage[5] != nullptr;
-    p->mesh = by_stage[7] != nullptr;
-    if (p->mesh)
+    const bool mesh = by_stage[7] != nullptr;
+    if (mesh && !dev.mesh_shader && !dev.mesh_fallback) return nullptr;
+    p->fallback = mesh && dev.uses_mesh_fallback(by_stage[6] != nullptr);
+    p->mesh = mesh && !p->fallback;
+    if (mesh)
         translate_mesh_into(*p, *blank, by_stage[6] ? &code[6] : nullptr, code[7], nullptr, by_stage[1] ? &code[1] : nullptr, color_types);
     else if (p->compute) {
         seed_cs_control = seed.blob.data() + by_stage[5]->control;
@@ -2699,9 +2719,9 @@ const Program* seed_variant_of(const uint64_t code[3], bool mesh, const uint32_t
     auto p = std::make_unique<Program>();
     p->key = mesh ? mesh_key(by_stage[6] ? &code_of[6] : nullptr, code_of[7], fs, nullptr, color_types)
                   : graphics_key(code_of[0], fs, attributes, color_types);
-    p->mesh = mesh && dev.mesh_shader;   // (as play makes it, mesh_program_locked: a fallback one is an ordinary graphics pipeline)
-    p->fallback = mesh && !dev.mesh_shader;
     if (mesh && !dev.mesh_shader && !dev.mesh_fallback) return nullptr;
+    p->fallback = mesh && dev.uses_mesh_fallback(by_stage[6] != nullptr);
+    p->mesh = mesh && !p->fallback;
     p->codes[0] = code[0], p->codes[1] = code[1], p->codes[2] = code[2];
     questions_in = &questions, questions_at = 0, answers_in = &answers;
     struct Reset { ~Reset() { questions_in = nullptr, answers_in = nullptr; } } reset;
