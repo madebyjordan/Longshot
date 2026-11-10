@@ -21,6 +21,19 @@ static class Glass
     const int DarkMode = 20, CornerPreference = 33, SystemBackdrop = 38;
     const int Round = 2, Acrylic = 3;
 
+    /// (the launcher) No acrylic: a dark window from its first frame. WPF clears a window to its composition target's colour,
+    /// white by default, before it draws anything: the launcher showed white for 150 ms first
+    public static void Plain(Window w, Color page)
+    {
+        var hwnd = new WindowInteropHelper(w).Handle;
+        if (hwnd == IntPtr.Zero) return;
+        if (HwndSource.FromHwnd(hwnd) is { CompositionTarget: { } target }) target.BackgroundColor = page;
+        var on = 1;
+        DwmSetWindowAttribute(hwnd, DarkMode, ref on, sizeof(int));
+        var corner = Round;
+        DwmSetWindowAttribute(hwnd, CornerPreference, ref corner, sizeof(int));
+    }
+
     /// Windows draws the acrylic in the system's Windows mode. Its light variant is brighter than anything the installer's
     /// tint can darken enough: the fixed Slate palette has light text and InkFaint (the inactive steps, the "Supported
     /// version" badge, the details) needs the dark page behind it. A light system gets that page, as Windows 10 does.

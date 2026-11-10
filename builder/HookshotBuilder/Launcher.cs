@@ -39,8 +39,6 @@ public partial class MainWindow
         StepPill.Visibility = Visibility.Collapsed;
         UseOwnFont();
         LauncherScreen.Visibility = Visibility.Visible;
-        LauncherScreen.Opacity = 0;
-        LauncherScreen.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(300)));
         launchBuilt = GameVersion(folder) ?? ReadVersion(folder);
         // (what is on this PC at once; GitHub's releases when they come)
         FillChoices(new List<string>(), null);

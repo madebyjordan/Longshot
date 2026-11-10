@@ -56,7 +56,14 @@ public partial class MainWindow : Window
         Drop += Dropped;
         SourceInitialized += (_, _) =>
         {
-            if (!Glass.Apply(this))   // (Windows 10, or no acrylic: plain Slate)
+            if (LaunchArg() != null)   // (the launcher: its own dark page from the first frame, no grey acrylic before it draws)
+            {
+                var dark = new SolidColorBrush(Color.FromRgb(0x0E, 0x0F, 0x0F));
+                Background = dark;
+                Root.Background = dark;
+                Glass.Plain(this, dark.Color);
+            }
+            else if (!Glass.Apply(this))   // (Windows 10, or no acrylic: plain Slate)
             {
                 Background = (Brush)FindResource("Page");
                 Root.Background = (Brush)FindResource("Page");
@@ -69,6 +76,11 @@ public partial class MainWindow : Window
             : "Longshot's build tools are missing from its folder. Press Build and Longshot offers to download them again.";
         SetStep(0);
         Refresh();
+        if (LaunchArg() != null)   // (the launcher from the window's first frame: no start-up animation before it)
+        {
+            Splash.Visibility = Visibility.Collapsed;
+            LauncherScreen.Visibility = Visibility.Visible;
+        }
     }
 
     // ================= the start =================
@@ -84,6 +96,14 @@ public partial class MainWindow : Window
             Application.Current.Shutdown();
             return;
         }
+        if (LaunchArg() is { } launchFolder)   // (Longshot.exe in the game folder: the launcher at once, Launcher.cs)
+        {
+            Main.Opacity = 1;   // (under the launcher, for an update or a switch it starts)
+            MainLift.Y = 0;
+            Main.IsHitTestVisible = true;
+            ShowLauncher(launchFolder);
+            return;
+        }
         Animate();
         var started = Stopwatch.StartNew();
         if (Environment.GetCommandLineArgs().Contains("--update"))
@@ -92,14 +112,6 @@ public partial class MainWindow : Window
             await Task.Delay(900);
             ShowMain();
             Updater.FromCommandLine(this);
-            return;
-        }
-        if (LaunchArg() is { } launchFolder)   // (Hookshot Launcher.exe in the game folder)
-        {
-            SplashText.Text = "Starting Longshot…";
-            await Task.Delay(700);
-            ShowMain();
-            ShowLauncher(launchFolder);
             return;
         }
         SplashText.Text = "Looking for your game files…";
