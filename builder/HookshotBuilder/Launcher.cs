@@ -22,7 +22,7 @@ public partial class MainWindow
     List<ReleaseInfo> launchReleases = new();    // (GitHub's releases, as last answered)
     string? launchBuilt;                         // (the release the launch folder holds)
     string? launchPick;                          // (the version picked: its key)
-    bool launchChecking, launchChecked, versionsOpen, olderOpen;
+    bool launchChecking, launchChecked, menuOpen, olderOpen, stepsHalfWay;
     enum Go { Play, Bring, None }                // (Bring: the folder is updated or built again to the version picked first)
     Go launchGo;
 
@@ -42,39 +42,18 @@ public partial class MainWindow
 
     LaunchChoice? Picked => launchLists?.Picked;
 
+    /// The launcher of a game folder, when the window opens as it (Longshot.exe in the folder, or the game built last)
     async void ShowLauncher(string folder)
     {
-        launchFolder = folder;
-        OutPath.Text = folder;
-        StepPill.Visibility = Visibility.Collapsed;
-        UseOwnFont();
-        LauncherWindow(true);
-        StateChanged += (_, _) =>
-        {
-            var full = WindowState == WindowState.Maximized;
-            Root.Margin = full ? Glass.Overhang(this) : new Thickness(0);
-            LauncherMax.Content = ((char)(full ? 0xE923 : 0xE922)).ToString();   // (Segoe Fluent Icons: restore, maximise)
-            LauncherMax.ToolTip = full ? "Restore" : "Maximize";
-            System.Windows.Automation.AutomationProperties.SetName(LauncherMax, full ? "Restore" : "Maximize");
-        };
-        PreviewKeyDown += (_, e) =>
-        {
-            if (e.Key != Key.Escape || !versionsOpen) return;
-            ShowVersions(false);
-            e.Handled = true;
-        };
-        launchBuilt = GameVersion(folder) ?? ReadVersion(folder);
-        launchPick = LastChoice(folder);
-        // (development) HOOKSHOT_UI_PREVIEW=versions,older,max,pick=release:v1.1.0,go,pages (any of them): the bar of versions open
-        // from the start, its older releases unfolded, the window maximised, that version picked, the button pressed, "Build
-        // from game files" pressed; cancel: Cancel pressed when what the button started is 40% done
+        // (development) HOOKSHOT_UI_PREVIEW=versions,older,max,pick=release:v1.1.0,go,pages (any of them): the menu open from the
+        // start, its older releases unfolded, the window maximised, that version picked, the button pressed, "Build from
+        // game files" pressed; cancel: Cancel pressed when what the button started is 40% done; steps: the menu opened then
         var preview = (Environment.GetEnvironmentVariable("HOOKSHOT_UI_PREVIEW") ?? "").Split(',', StringSplitOptions.TrimEntries);
-        if (preview.FirstOrDefault(p => p.StartsWith("pick=")) is { } pick) launchPick = pick[5..];
         olderOpen = preview.Contains("older");
         cancelHalfWay = preview.Contains("cancel");
-        // (what is on this PC at once; GitHub's releases when they come)
-        FillChoices();
-        if (preview.Contains("versions")) ShowVersions(true, atOnce: true);
+        stepsHalfWay = preview.Contains("steps");
+        EnterLauncher(folder, preview.FirstOrDefault(p => p.StartsWith("pick="))?[5..], check: false);
+        if (preview.Contains("versions")) ShowMenu(true, atOnce: true);
         if (preview.Contains("max")) WindowState = WindowState.Maximized;
         await CheckReleases(say: false);
         // (development) HOOKSHOT_UI_SHOT=<file.png>: the window as drawn, once the releases are in, and out (the window opens away
@@ -98,6 +77,21 @@ public partial class MainWindow
         }
     }
 
+    /// The screen becomes the launcher of that folder: at the start, and when a build here has made the game (MainWindow.xaml.cs,
+    /// ShowReady) or was left for the game that is there. What is on this PC shows at once; GitHub's releases when they come
+    void EnterLauncher(string folder, string? pick = null, bool check = true)
+    {
+        launchFolder = folder;
+        updating = false;
+        if (OutPath.Text != folder) OutPath.Text = folder;
+        launchBuilt = GameVersion(folder) ?? ReadVersion(folder);
+        launchPick = pick ?? LastChoice(folder);
+        launchState = LaunchState.Idle;
+        ShowFace(Face.Launcher);
+        FillChoices();
+        if (check && !launchChecked) _ = CheckReleases(say: false);
+    }
+
     static string? Shot => Environment.GetEnvironmentVariable("HOOKSHOT_UI_SHOT") is { Length: > 0 } file ? file : null;
 
     void SaveShot(string file)
@@ -107,28 +101,17 @@ public partial class MainWindow
         picture.Render(this);
         var png = new PngBitmapEncoder();
         png.Frames.Add(BitmapFrame.Create(picture));
-        using var to = File.Create(file);
-        png.Save(to);
-    }
-
-    /// The launcher's window: 960x640 under its own title bar, and it can be maximised. The installer's (an update or a switch the
-    /// launcher starts goes on in it) keeps the size it has and its own buttons
-    void LauncherWindow(bool on)
-    {
-        LauncherScreen.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-        CaptionButtons.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
-        Main.Visibility = on ? Visibility.Hidden : Visibility.Visible;   // (the installer's pages under the launcher: out of the Tab key's way)
-        if (on)
+        using (var to = File.Create(file)) png.Save(to);
+        // (beside it, what the picture shows in words, for a check that reads no picture: tests/builder_launcher/rig)
+        var menu = !menuOpen ? "closed" : MenuSteps.Visibility == Visibility.Visible ? "steps" : MenuOptions.Visibility == Visibility.Visible ? "options" : "versions";
+        File.WriteAllLines(System.IO.Path.ChangeExtension(file, ".txt"), new[]
         {
-            (MinWidth, MinHeight, Height) = (960, 640, 640);
-            ResizeMode = ResizeMode.CanResize;
-        }
-        else
-        {
-            WindowState = WindowState.Normal;
-            ResizeMode = ResizeMode.CanMinimize;
-        }
-        if (WindowChrome.GetWindowChrome(this) is { IsFrozen: false } chrome) chrome.CaptionHeight = on ? 48 : 64;
+            $"face={face}", $"state={launchState}", $"button={(LauncherGo.Visibility == Visibility.Visible ? LauncherGoText.Text : "")}",
+            $"enabled={LauncherGo.IsEnabled}", $"under={LauncherVersion.Content}", $"line={LauncherStatus.Text}", $"menu={menu}",
+            $"ready={ReadyBlock.Visibility == Visibility.Visible}", $"files={SourceText.Text}", $"folder={OutPath.Text}",
+            $"note={string.Concat(FilesNote.Inlines.OfType<System.Windows.Documents.Run>().Select(r => r.Text))}",
+            $"steps={string.Join(" | ", rows.Values.Select(r => r.Says))}",
+        });
     }
 
     /// GitHub's releases asked for (when the launcher opens, and by Check for updates, which then says what came of it)
@@ -214,7 +197,10 @@ public partial class MainWindow
     /// What the button does for the version picked; its name under the button, and a line under that when there is one to say
     void ShowGo()
     {
+        if (face != Face.Launcher) return;   // (a build's own screen: MainWindow.xaml.cs says what the button does)
         ShowPills();
+        // (right after a build, while nothing else is going on: the shortcuts and what the build keeps, above the button)
+        ReadyBlock.Visibility = readyNote != null && launchState == LaunchState.Idle ? Visibility.Visible : Visibility.Collapsed;
         if (launchState != LaunchState.Idle)
         {
             ShowBring();
@@ -223,7 +209,7 @@ public partial class MainWindow
         LauncherGo.Visibility = Visibility.Visible;
         LauncherProgress.Visibility = Visibility.Collapsed;
         LauncherVersion.Foreground = Brushes.White;
-        (LauncherStatus.ToolTip, LauncherStatus.IsHitTestVisible) = (null, false);
+        (LauncherStatus.ToolTip, LauncherStatus.IsHitTestVisible, LauncherStatus.Cursor) = (null, false, null);
         var c = Picked;
         var (text, news, verb) = ("", false, "Play");
         if (c == null)
@@ -264,13 +250,22 @@ public partial class MainWindow
         LauncherGo.IsEnabled = launchGo != Go.None;
         LauncherVersion.Content = c?.Title ?? "No game in this folder";
         LauncherVersion.IsHitTestVisible = c != null;
+        // (this once, the game the folder holds: that it was just built, and in how long)
+        if (readyNote != null && c is { Here: true, Folder: null } && !news) (text, LauncherStatus.ToolTip, LauncherStatus.IsHitTestVisible) = (readyNote, readyTip, true);
         LauncherStatus.Text = text;
         LauncherStatus.Foreground = news ? NewsInk : QuietInk;
-        LauncherAll.Tag = NewerOut() ? "news" : null;   // (the dot on All Versions: a newer release is in there)
+        MenuDot.Visibility = NewerOut() ? Visibility.Visible : Visibility.Collapsed;   // (the dot on Menu: a newer release is in there)
     }
 
+    /// The button: the build's own word on a build's screen (MainWindow.xaml.cs), else what the launcher does for the version picked
     void LauncherGoClick(object sender, RoutedEventArgs e)
     {
+        switch (face)
+        {
+            case Face.Files: StartBuild(sender, e); return;
+            case Face.Problem: RetryProblem(sender, e); return;
+            case Face.Build: return;
+        }
         if (launchState == LaunchState.Working) return;
         if (launchState == LaunchState.Stopped)   // (the button says Retry)
         {
@@ -289,9 +284,9 @@ public partial class MainWindow
                 StartWork(c);
                 break;
             case Go.Bring:
-                // (a setup from before it could install a version beside this one: the builder's own update, in its own
-                // window, as it was. The latest release as before; any other by its own tag)
-                LauncherWindow(false);
+                // (a setup from before it could install a version beside this one: the builder's own update, which takes this
+                // builder's place with that version's. The latest release as before; any other by its own tag)
+                readyNote = null;
                 Updater.UpdateFolder(this, launchFolder, c.Tag, fetched: false, exact: !SameTag(c.Tag, latestTag));
                 break;
         }
@@ -324,7 +319,13 @@ public partial class MainWindow
         (workTarget, work, workCancelled, workStopped, shotWorking) = (c, new LaunchWork(VersionName(tag), ahead, fetch: tools == null), false, "", false);
         workLog.Clear();
         launchState = LaunchState.Working;
-        ShowVersions(false);
+        readyNote = null;
+        ShowDetails(false);
+        // (its steps, in the menu: the builder got first when it is not here; the shaders' step when that version has one and
+        // the player has it on. One downloaded is a version that has it)
+        MakeRows(update: true, shaders: BuilderSettings.PrepareNow(SettingsPath) && (tools == null || KnowsShaderStep(tools)), download: tools == null);
+        StepsTitle.Text = $"{(ahead ? "Updating to" : "Switching to")} {VersionName(tag)}";
+        ShowMenu(false);
         ShowGo();
         if (tools == null)
         {
@@ -396,11 +397,26 @@ public partial class MainWindow
         work.Line(line);
         workLog.AppendLine(line);
         if (workLog.Length > 600_000) workLog.Remove(0, workLog.Length - 400_000);
+        if (detailsShown)
+        {
+            Log.AppendText(line + "\n");
+            Log.ScrollToEnd();
+        }
+        // (the menu's steps: the builder got, then what its make_game.py says of its own)
+        if (line.StartsWith("@@setup ") && rows.TryGetValue("download", out var got))
+        {
+            if (current == null) { current = "download"; got.Begin(); }
+            got.Small(line[8..].Trim());
+        }
+        else if (line.StartsWith("@@installed ") && rows.TryGetValue("download", out got)) { got.Small("Installed beside the one in use"); got.Done(); current = null; }
+        else StepsLine(line);
         ShowBring();
         if (Shot != null && !shotWorking && work.Fraction >= 0.4)   // (development: the working state drawn once, on the way)
         {
             shotWorking = true;
+            if (stepsHalfWay) ShowMenu(true, atOnce: true);
             SaveShot(System.IO.Path.ChangeExtension(Shot, null) + "-working.png");
+            if (stepsHalfWay) ShowMenu(false, atOnce: true);
         }
         if (cancelHalfWay && work.Fraction >= 0.4)
         {
@@ -430,8 +446,14 @@ public partial class MainWindow
         {
             workStopped = failure ?? work?.Error ?? "The build tools stopped without saying why.";
             launchState = LaunchState.Stopped;
+            if (current != null && rows.TryGetValue(current, out var row)) row.Stopped();
         }
-        if (launchState == LaunchState.Idle) FillChoices();
+        if (launchState == LaunchState.Idle)
+        {
+            ShowDetails(false);
+            ShowMenu(false);   // (it held the steps: the versions are in it again)
+            FillChoices();
+        }
         else ShowGo();
         if (Shot != null)   // (development: drawn as it ended, and out)
         {
@@ -471,7 +493,7 @@ public partial class MainWindow
             LauncherVersion.Foreground = Brushes.White;
             LauncherStatus.Text = work.Detail;
             LauncherStatus.Foreground = QuietInk;
-            (LauncherStatus.ToolTip, LauncherStatus.IsHitTestVisible) = (null, false);
+            (LauncherStatus.ToolTip, LauncherStatus.IsHitTestVisible, LauncherStatus.Cursor) = (null, false, null);
             return;
         }
         LauncherGoText.Text = "Retry";
@@ -479,24 +501,51 @@ public partial class MainWindow
         LauncherVersion.Content = work.StoppedTitle;
         LauncherVersion.Foreground = StoppedInk;
         // (the folder is swapped only once the new game is complete, make_game.py: one that stopped left it as it was. The line
-        // is one line: a long reason has it to itself, cut where it ends and whole under the pointer and in Copy details)
+        // is one line: a long reason has it to itself, cut where it ends and whole under the pointer and in Copy details.
+        // Pressed, it shows what the programs said)
         const string kept = "Nothing was changed in your game folder.";
         var why = workStopped.TrimEnd('.') + ".";
         LauncherStatus.Text = why.Length + kept.Length <= 96 ? why + " " + kept : why;
         LauncherStatus.Foreground = QuietInk;
         LauncherStatus.ToolTip = why + " " + kept;
-        LauncherStatus.IsHitTestVisible = true;
+        (LauncherStatus.IsHitTestVisible, LauncherStatus.Cursor) = (true, Cursors.Hand);
+        LauncherCopy.Content = "Copy details";
     }
 
-    /// The buttons at the bottom left: All Versions; Cancel while a version is brought; Back and Copy details when that stopped
+    bool Working => face == Face.Build || (face == Face.Launcher && launchState == LaunchState.Working);
+    bool Stopped => face == Face.Problem || (face == Face.Launcher && launchState == LaunchState.Stopped);
+
+    /// The buttons at the edges: Menu at the top left while the menu is closed; at the bottom left Cancel while a version is
+    /// brought or the game is built, Back and Copy details when that stopped, and Back from a build's choices to the launcher
+    /// they were opened from
     void ShowPills()
     {
-        LauncherAll.Visibility = launchState == LaunchState.Idle && !versionsOpen ? Visibility.Visible : Visibility.Collapsed;
-        LauncherCancel.Visibility = launchState == LaunchState.Working ? Visibility.Visible : Visibility.Collapsed;
-        LauncherStopped.Visibility = launchState == LaunchState.Stopped ? Visibility.Visible : Visibility.Collapsed;
+        if (MenuButton == null) return;
+        MenuButton.Visibility = menuOpen ? Visibility.Collapsed : Visibility.Visible;
+        LauncherCancel.Visibility = Working ? Visibility.Visible : Visibility.Collapsed;
+        LauncherStopped.Visibility = Stopped ? Visibility.Visible : Visibility.Collapsed;
+        FilesBack.Visibility = face == Face.Files && launchFolder.Length > 0 && File.Exists(GameExe(launchFolder)) ? Visibility.Visible : Visibility.Collapsed;
+        // (the menu's rows stay clear of them)
+        MenuScroll.Margin = new Thickness(0, 48, 0, Working || Stopped || FilesBack.Visibility == Visibility.Visible ? 90 : 0);
     }
 
-    void LauncherCancelClick(object sender, RoutedEventArgs e) => CancelLaunchWork();
+    void LauncherCancelClick(object sender, RoutedEventArgs e)
+    {
+        if (face == Face.Build) CancelBuild(sender, e);
+        else CancelLaunchWork();
+    }
+
+    void StoppedBackClick(object sender, RoutedEventArgs e)
+    {
+        if (face == Face.Problem) Back(sender, e);
+        else LauncherBackToIdleClick(sender, e);
+    }
+
+    void StoppedCopyClick(object sender, RoutedEventArgs e)
+    {
+        if (face == Face.Problem) CopyForReport(sender, e);
+        else LauncherCopyClick(sender, e);
+    }
 
     internal void CancelLaunchWork()
     {
@@ -509,6 +558,8 @@ public partial class MainWindow
     void LauncherBackToIdleClick(object sender, RoutedEventArgs e)
     {
         launchState = LaunchState.Idle;
+        ShowDetails(false);
+        ShowMenu(false);
         FillChoices();
     }
 
@@ -526,29 +577,22 @@ public partial class MainWindow
         catch (Exception) { LauncherCopy.Content = "Could not copy"; }   // (the clipboard held by another program)
     }
 
-    // ---- the builder's own pages, from the launcher and back ----
+    // ---- a build from game files, from the launcher and back ----
 
-    bool installerOpened;
-
-    /// "Build from game files", at the foot of the bar: the installer's pages in this window (other game files, where the game
-    /// goes, the options a build has), with the way back in their head
+    /// "Build from game files", at the foot of the menu's versions: the build's choices on the screen (other game files, where
+    /// the game goes; its options in the menu), with Back at the bottom left
     async void LauncherBuildClick(object sender, RoutedEventArgs e)
     {
-        ShowVersions(false, atOnce: true);
-        LauncherWindow(false);
-        Background = Root.Background = (Brush)FindResource("Page");
-        BackToLauncher.Visibility = Visibility.Visible;
-        if (installerOpened) return;
-        installerOpened = true;
-        await OpenInstallerPages(null);
+        if (launchState != LaunchState.Idle) return;
+        readyNote = null;
+        sourcePicked = false;
+        await OpenFiles(first: false);
     }
 
     void BackToLauncherClick(object sender, RoutedEventArgs e)
     {
-        if (runner != null) return;   // (a build under way in the installer's pages: it is watched there)
-        LauncherWindow(true);
-        launchBuilt = GameVersion(launchFolder) ?? ReadVersion(launchFolder);
-        FillChoices();
+        if (runner != null) return;
+        EnterLauncher(launchFolder);
     }
 
     /// (the version under the button, pressed: the folder it is in)
@@ -566,21 +610,35 @@ public partial class MainWindow
     void LauncherMaxClick(object sender, RoutedEventArgs e) =>
         WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
-    // ---- All Versions: the bar from the left ----
+    // ---- the menu: a bar from the left (Paper: "Master Menu"), opened by Menu and closed by Close menu ----
 
-    void LauncherAllClick(object sender, RoutedEventArgs e) => ShowVersions(true);
+    void MenuClick(object sender, RoutedEventArgs e) => ShowMenu(true);
 
-    /// (a press in the window that no button took: the bar closes)
-    void LauncherBackClick(object sender, MouseButtonEventArgs e) => ShowVersions(false);
+    void MenuCloseClick(object sender, RoutedEventArgs e) => ShowMenu(false);
 
-    /// (a press in the bar itself, between its rows: it stays)
+    /// (a press in the window that no button took: the menu closes)
+    void LauncherBackClick(object sender, MouseButtonEventArgs e) => ShowMenu(false);
+
+    /// (a press in the menu itself, between its rows: it stays)
     void LauncherBarClick(object sender, MouseButtonEventArgs e) => e.Handled = true;
 
-    void ShowVersions(bool open, bool atOnce = false)
+    /// What the menu holds goes with the moment: the steps while a version is brought or the game is built, a build's options
+    /// while its choices are on the screen (or when there is no game whose versions to show), else the versions
+    void ShowMenu(bool open, bool atOnce = false)
     {
-        if (open == versionsOpen) return;
-        versionsOpen = open;
+        if (VersionBar == null) return;
+        if (open)
+        {
+            var options = !Working && (face == Face.Files || launchFolder.Length == 0);
+            MenuSteps.Visibility = Working ? Visibility.Visible : Visibility.Collapsed;
+            MenuOptions.Visibility = options ? Visibility.Visible : Visibility.Collapsed;
+            MenuVersions.Visibility = !Working && !options ? Visibility.Visible : Visibility.Collapsed;
+        }
+        if (open == menuOpen) return;
+        menuOpen = open;
         ShowPills();
+        VersionBarSlide.BeginAnimation(TranslateTransform.XProperty, null);
+        VersionBar.BeginAnimation(OpacityProperty, null);
         if (open) VersionBar.Visibility = Visibility.Visible;
         else if (atOnce) VersionBar.Visibility = Visibility.Collapsed;
         if (atOnce) return;
@@ -591,7 +649,7 @@ public partial class MainWindow
             EasingFunction = new CubicEase { EasingMode = open ? EasingMode.EaseOut : EasingMode.EaseIn },
         };
         // (opened again before it was away: it stays)
-        if (!open) slide.Completed += (_, _) => { if (!versionsOpen) VersionBar.Visibility = Visibility.Collapsed; };
+        if (!open) slide.Completed += (_, _) => { if (!menuOpen) VersionBar.Visibility = Visibility.Collapsed; };
         VersionBarSlide.BeginAnimation(TranslateTransform.XProperty, slide);
         VersionBar.BeginAnimation(OpacityProperty, new DoubleAnimation(open ? 0 : 1, open ? 1 : 0, time));
     }

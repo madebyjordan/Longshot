@@ -56,7 +56,8 @@ settings, so switching costs nothing. The window's title, the start-up screen, t
 say which one runs: a release its tag (`v1.0.0`), a dev build the release it is heading for and its commit (`pre-1.1.0 6353e9b`), any other its branch and commit.
 
 Opening `Longshot.exe` in `game` shows the launcher (the Longshot Builder in launch mode, `builder/HookshotBuilder/Launcher.cs`):
-one button that plays the version picked, or updates or builds the folder to it first, and **All Versions**, a bar with three
+one button that plays the version picked, or updates or builds the folder to it first, and **Menu**, at the top left, which
+opens a bar (closed by **Close menu** at its top, a press elsewhere or Esc) with **All Versions** in three
 lists: **Releases** (the two newest, the rest folded into one row), **Pre-releases** (while one is ahead of the latest
 release) and **Dev builds** (every dev build in a folder beside `game`: its `hookshot_build.txt` says `channel=dev`;
 `build-game.ps1` writes it). A list with nothing in it is not shown. A version with no mark is on this PC, one with the
@@ -67,9 +68,17 @@ Paper (the file Longshot) and built from that drawing. The button's word is in M
 your own in `%LOCALAPPDATA%\LongshotBuilder\fonts` is used instead. A commercial font such as FOT-Chiaro is never added to
 the repository or the app: its license does not allow passing it on.
 
-The launcher is the one window a player sees. The Longshot Builder opened with nothing asked is the launcher of the game it
-built last, or of one whose own launcher was played from on this PC (its own pages when there is none yet; from the launcher, **Build from game files** at the foot of the bar opens
-them in the same window, with the way back in their head). When the button brings another version, the window stays and
+The launcher is the one window a player sees, and a build from game files is that window with other things in its places
+(`builder/HookshotBuilder/MainWindow.xaml.cs`; Paper, the "v3" artboards). The Longshot Builder opened with nothing asked is
+the launcher of the game it built last, or of one whose own launcher was played from on this PC. With no game yet, or from
+**Build from game files** at the foot of the menu's versions (**Back** at the bottom left returns), the screen has the build's
+two choices between the wordmark and the button, the game files and the folder, and the button says **Build**; the menu
+then holds the build's options (language, workers, where the build files go, the shaders' step, DLSS, FSR 4). While it
+builds, the button's place is a strip that fills, **Cancel** is at the bottom left, and the menu holds the steps. When it
+is done the screen is the launcher of the new game, with, that once, the shortcuts and what the build keeps on the PC above
+**Play**. One that stopped says so in red under the button, which says **Retry** (**Repair** when the tools are damaged),
+with **Back** and **Copy details**; the line that says why, pressed, shows what the tools said. The game's own update offer
+(`--update <folder>`) is the same build on the same screen. When the button brings another version, the window stays and
 hidden programs do the work, each a program of its own: the setup in its engine mode (`LongshotBuilder-Setup.exe --engine
 --tag <tag>`, `builder/setup/setup.c`) installs that release's builder beside the one in use, without making it the one in
 use or removing any (a part the two share is linked, file by file, not downloaded), and then that version's own
@@ -87,15 +96,21 @@ handed out by a web server on this PC, a scratch install (`HOOKSHOT_SETUP_BASE`,
 and a stand-in for a version's Python that says what `make_game.py` says (a setup list that `HOOKSHOT_SETUP_LIST` takes from
 `http://127.0.0.1:` may name parts there; every other part link is https). It checks the setup's engine mode alone, then
 presses the launcher's button for a pre-release, a release to go back to, a build that stops, one cancelled, a download that fails and
-the latest release, and draws each to a PNG file.
+the latest release; then, with a copy of the builder that has the stand-in tools beside it, a first build from a made-up
+game file, the game's update offer and a build that stops. Each is drawn to a PNG file, with a text file beside it that says
+what the picture shows (the screen, the button's word, the lines under it, what the menu holds, each step), which is what the
+checks read.
 
 To look at the launcher without a game: `HOOKSHOT_LATEST_TAG=v1.2.0-rc.1,v1.1.0,v1.0.0?` gives it those releases instead of
 GitHub's (newest first; one with a part after its numbers is a pre-release, the first without is the latest, one ending in
-`?` has no builder to download; `none`: no answer). `HOOKSHOT_UI_PREVIEW` takes any of `versions` (the bar open), `older`
+`?` has no builder to download; `none`: no answer). `HOOKSHOT_UI_PREVIEW` takes any of `versions` (the menu open), `older`
 (its older releases unfolded), `max` (the window maximised), `pick=release:v1.1.0` or `pick=dev:<folder>` (that version
-picked), `go` (the button pressed), `cancel` (Cancel pressed when that is 40% done) and `pages` (Build from game files pressed), with
-commas between them, and `HOOKSHOT_UI_SHOT=<file.png>` draws the window to that file and closes, away from
-the screen.
+picked), `go` (the button pressed), `cancel` (Cancel pressed when that is 40% done), `steps` (the menu open in the picture
+drawn on the way) and `pages` (Build from game files pressed), with commas between them, and `HOOKSHOT_UI_SHOT=<file.png>`
+draws the window to that file and closes, away from the screen. Started with no `--launch <folder>`, the same switch shows a
+build's screens with made-up progress and nothing run: `found` (a game file found), `build`, `update`, `stopped`, `problem`
+(the tools damaged), `ready`, and `menu` after any of them (`go` there checks the game files and presses Build for real).
+A screen drawn to a file, or made up, makes and moves no shortcut.
 
 ### Test runs without another game folder
 

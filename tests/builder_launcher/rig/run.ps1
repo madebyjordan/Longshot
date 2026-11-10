@@ -48,6 +48,15 @@ function Check([bool]$ok, [string]$what) { if ($ok) { "  ok    $what" } else { "
 function Versions { ((Get-ChildItem "$Out\base\versions" -Directory).Name | Sort-Object) -join ", " }
 function Folder { ((Get-Content "$Out\game\hookshot_version.txt") -replace "^version=", "").Trim() }
 function Rig { python -I "$here\rig.py" $Out $Port | Out-Null }
+# (what a picture shows, in words: the builder writes them beside each picture it draws, Launcher.cs SaveShot)
+function Says([string]$name) {
+    $said = @{}
+    foreach ($line in (Get-Content "$Out\$name.txt" -Encoding UTF8 -ErrorAction SilentlyContinue)) {
+        $at = $line.IndexOf("=")
+        if ($at -gt 0) { $said[$line.Substring(0, $at)] = $line.Substring($at + 1) }
+    }
+    $said
+}
 function Engine([string]$tag, [string]$list) {
     $env:HOOKSHOT_SETUP_LIST = "http://127.0.0.1:$Port/$list"
     $said = & cmd /c "`"$setup`" --engine --tag $tag" 2>&1
@@ -102,7 +111,7 @@ try {
         function Press([string]$name, [string]$tags, [string]$preview, [string]$list, [switch]$Bare) {
             $env:HOOKSHOT_LATEST_TAG = $tags; $env:HOOKSHOT_UI_PREVIEW = $preview; $env:HOOKSHOT_UI_SHOT = "$Out\$name.png"
             $env:HOOKSHOT_SETUP_LIST = if ($list) { "http://127.0.0.1:$Port/$list" } else { "" }
-            Remove-Item "$Out\$name.png", "$Out\$name-working.png" -ErrorAction SilentlyContinue
+            Remove-Item "$Out\$name.png", "$Out\$name.txt", "$Out\$name-working.png", "$Out\$name-working.txt" -ErrorAction SilentlyContinue
             $p = if ($Bare) { Start-Process $Builder -PassThru } else { Start-Process $Builder -ArgumentList "--launch", "`"$Out\game`"" -PassThru }
             if (-not $p.WaitForExit(90000)) { $p.Kill(); "  !! $name : stopped by the rig (not out in 90 s)" }
             Test-Path "$Out\$name.png"
@@ -138,17 +147,68 @@ try {
         Check ($drawn -and (Folder) -eq "v2.2.0") "the folder holds v2.2.0 (it says $(Folder))"
         Check ((Get-Content "$Out\base\versions\current.txt") -eq "v2.2.0") "its builder is the one in use from the next start"
         Check ((Versions) -eq "v2.2.0") "and the builders no longer in use are gone ($(Versions))"
+        Check ((Says "pre-working").face -eq "Launcher" -and (Says "pre-working").state -eq "Working" -and (Says "pre-working").button -eq "") "on the way it is the launcher still, the strip in its button's place"
         "--- the builder opened with nothing asked: the launcher of the game built last"
         Set-Content "$Out\base\builder-settings.json" ('{"Out":' + (ConvertTo-Json "$Out\game") + '}') -Encoding ascii
         $drawn = Press "home" "v2.2.0,v2.1.0" "" "" -Bare
-        Check $drawn "it opened as the launcher (drawn to a file, which only the launcher does)"
+        Check ($drawn -and (Says "home").face -eq "Launcher" -and (Says "home").button -eq "Play") "it opened as the launcher: $((Says 'home').button), $((Says 'home').under)"
         "--- and with no game it built: the launcher of a game whose own launcher was played from (launcher.json)"
         Remove-Item "$Out\base\builder-settings.json"
         $drawn = Press "home-known" "v2.2.0,v2.1.0" "" "" -Bare
-        Check $drawn "it opened as the launcher"
-        "--- Build from game files: the builder's own pages, in the launcher's window"
+        Check ($drawn -and (Says "home-known").face -eq "Launcher") "it opened as the launcher"
+        "--- the menu: the versions"
+        $drawn = Press "menu" "v2.2.0,v2.1.0" "versions" ""
+        Check ($drawn -and (Says "menu").menu -eq "versions") "open, with the versions in it"
+        "--- Build from game files: the build's choices, on the launcher's screen"
         $drawn = Press "pages" "v2.2.0,v2.1.0" "pages" ""
-        Check $drawn "drawn"
+        Check ($drawn -and (Says "pages").face -eq "Files") "the choices are on the screen (the button says $((Says 'pages').button))"
+
+        # ---- the build itself (builder/HookshotBuilder/MainWindow.xaml.cs), on the same screen: a copy of the builder with the
+        # stand-in tools beside it, as a release has its own, and an install of its own with a made-up game file chosen ----
+        "=== the build, on the launcher's screen ==="
+        $app = "$Out\app"
+        Remove-Item $app, "$Out\base2", "$Out\newgame" -Recurse -Force -ErrorAction SilentlyContinue
+        Copy-Item (Split-Path $Builder) $app -Recurse
+        New-Item -ItemType Directory -Force "$app\tools\nx2", "$app\tools\python", "$Out\base2" | Out-Null
+        Copy-Item "$Out\fakepy.exe" "$app\tools\python\python.exe"
+        Set-Content "$app\tools\nx2\make_game.py" "# the test rig's stand-in: fakepy.exe plays this part" -Encoding ascii
+        Set-Content "$app\tools\version.txt" "v2.1.0" -Encoding ascii
+        Set-Content "$Out\made-up.nup" "not a game file: the test rig's" -Encoding ascii
+        Set-Content "$Out\base2\builder-settings.json" ('{"Out":' + (ConvertTo-Json "$Out\newgame") + ',"Nup":' + (ConvertTo-Json "$Out\made-up.nup") + '}') -Encoding ascii
+        $env:HOOKSHOT_SETUP_BASE = "$Out\base2"
+        function Build([string]$name, [string]$preview, [string[]]$asked) {
+            $env:HOOKSHOT_LATEST_TAG = "v2.1.0"; $env:HOOKSHOT_UI_PREVIEW = $preview; $env:HOOKSHOT_UI_SHOT = "$Out\$name.png"
+            Remove-Item "$Out\$name.png", "$Out\$name.txt", "$Out\$name-working.png", "$Out\$name-working.txt" -ErrorAction SilentlyContinue
+            $p = if ($asked) { Start-Process "$app\LongshotBuilder.exe" -ArgumentList $asked -PassThru } else { Start-Process "$app\LongshotBuilder.exe" -PassThru }
+            if (-not $p.WaitForExit(90000)) { $p.Kill(); "  !! $name : stopped by the rig (not out in 90 s)" }
+            Test-Path "$Out\$name.png"
+        }
+        "--- with no game yet: the choices"
+        $drawn = Build "first-files" "files" @()
+        $s = Says "first-files"
+        Check ($drawn -and $s.face -eq "Files" -and $s.button -eq "Build" -and $s.files -like "made-up.nup*" -and $s.folder -eq "$Out\newgame") "the game file chosen last time and the folder, and the button says Build ($($s.files); $($s.under))"
+        "--- Build pressed: the game built, the screen the launcher's throughout"
+        $drawn = Build "first" "go,steps" @()
+        $s = Says "first-working"
+        Check ($s.face -eq "Build" -and $s.button -eq "" -and $s.under -like "Building your game - *%") "on the way: the strip, and how far ($($s.under))"
+        Check ($s.menu -eq "steps" -and $s.steps -like "*Translate to PC code: done*Compile: now*Put it together: to come*") "its steps are in the menu ($($s.steps))"
+        $s = Says "first"
+        Check ($drawn -and $s.face -eq "Launcher" -and $s.button -eq "Play" -and $s.ready -eq "True" -and $s.line -like "Your game is ready*") "when it ended: the launcher of the new game, with Play ($($s.under); $($s.line))"
+        Check ((Get-Content "$Out\newgame\hookshot_version.txt" -ErrorAction SilentlyContinue) -eq "version=v2.1.0") "the folder holds the game"
+        "--- the game's own update offer (--update <folder>): the same build, the same screen"
+        $drawn = Build "offer" "x" @("--update", "`"$Out\newgame`"", "--tag", "v2.1.0", "--fetched")
+        $s = Says "offer"
+        Check ((Says "offer-working").under -like "Updating your game - *%") "on the way: $((Says 'offer-working').under)"
+        Check ($drawn -and $s.face -eq "Launcher" -and $s.button -eq "Play" -and $s.line -like "Your game is updated*") "when it ended: the launcher, with Play ($($s.line))"
+        "--- a build that stops"
+        Remove-Item "$Out\newgame" -Recurse -Force -ErrorAction SilentlyContinue
+        $env:FAKE_FAIL = "1"
+        $drawn = Build "first-stopped" "go" @()
+        $env:FAKE_FAIL = ""
+        $s = Says "first-stopped"
+        Check ($drawn -and $s.face -eq "Problem" -and $s.button -eq "Retry" -and $s.under -eq "The build stopped" -and $s.steps -like "*Compile: stopped*") "the screen says so, with Retry ($($s.line))"
+        Check (-not (Test-Path "$Out\newgame\hookshot_version.txt")) "and no game was made"
+        $env:HOOKSHOT_SETUP_BASE = "$Out\base"
         "pictures: $Out\*.png"
     }
     Check ((Real) -eq $realBefore) "the real install is untouched"

@@ -13,11 +13,23 @@ using Microsoft.Win32;
 
 namespace HookshotBuilder;
 
-/// The installer: one 960x600 window. It opens with the hookshot in the middle while it looks for the game files, then walks
-/// through Game files > Build > Play. The game's update offer (Updater.cs) opens the same window on its update screen, and
-/// Longshot.exe in a game folder opens it as the launcher (Launcher.cs: 960x640, and it can be maximised).
+/// One 960x640 window that looks the same throughout, as drawn in Paper (the file Longshot): the launcher of a game that is
+/// built (Launcher.cs), and, here, the build itself in that window. A build is the launcher's screen with other things in
+/// its places: the game files and the folder between the wordmark and the button, the button that says Build, then the strip
+/// that fills, then Play. Its options and its steps are in the menu. The game's update offer (Updater.cs) is the same build.
 public partial class MainWindow : Window
 {
+    /// What the screen is showing: the launcher of a built game (Launcher.cs), the choices of a build from game files, a build
+    /// or an update under way, or one that stopped
+    enum Face { Launcher, Files, Build, Problem }
+    Face face = Face.Launcher;
+    bool searching;            // (the game files are being looked for)
+    string buildTitle = "Building your game", problemTitle = "", modeNote = "";
+    bool detailsShown, desktopShortcut = true, startShortcut = true, freeing;
+    (string Folder, string? Tag)? lastUpdate;   // (the update last begun: Retry begins it again)
+
+    static readonly Brush DimInk = Frozen(0x8E, 0x8E, 0x8E), BadInk = Frozen(0xE2, 0x77, 0x6B);
+
     const long NeededBytes = 45L << 30;   // (measured 2026-11-09: the game data 24.4 GB, the shader caches ~8 GB, the game 0.4 GB, the build files ~5 GB at their peak; the rest headroom)
     Language lang = Strings.Default();
     string T(S s) => (int)s < lang.Text.Length ? lang.Text[(int)s] : Strings.All[0].Text[(int)s];
@@ -33,10 +45,8 @@ public partial class MainWindow : Window
     string? current;
     string finished = "";
     string? chosenNup, romfs, exefs;
-    // (issue 650) "Using the folders ..." above the list of .nup files, while romfs and exefs are the game files: FillDumps clears the
-    // list, so the note is made there again each time (it was gone as soon as the list was first filled)
+    // (issue 650) "Using the folders ...", while romfs and exefs are the game files: said under the pointer on their row
     string? foldersNote;
-    TextBlock? foldersNoteBlock;
     bool updating, checking;
     double compiled;
     int filesDone, filesOf;
@@ -59,40 +69,34 @@ public partial class MainWindow : Window
         WorkerBox.SelectedIndex = 0;
         clock.Tick += (_, _) => Tick();
         Drop += Dropped;
-        SourceInitialized += (_, _) =>
-        {
-            if (launchAt != null)   // (the launcher: its own dark page from the first frame, no grey acrylic before it draws)
-            {
-                var dark = new SolidColorBrush(Color.FromRgb(0x12, 0x12, 0x12));
-                Background = dark;
-                Root.Background = dark;
-                Glass.Plain(this, dark.Color);
-            }
-            else if (!Glass.Apply(this))   // (Windows 10, or no acrylic: plain Slate)
-            {
-                Background = (Brush)FindResource("Page");
-                Root.Background = (Brush)FindResource("Page");
-            }
-        };
+        // (its own dark page from the first frame, no grey acrylic before it draws)
+        SourceInitialized += (_, _) => Glass.Plain(this, Color.FromRgb(0x12, 0x12, 0x12));
         Loaded += (_, _) => Start();
-        var tools = Tools.Find();
-        ToolsNote.Text = tools != null
-            ? "Nothing else to install: Longshot's own build tools are here, downloaded and checked by its setup."
-            : "Longshot's build tools are missing from its folder. Press Build and Longshot offers to download them again.";
-        SetStep(0);
-        Refresh();
-        if (launchAt != null)   // (the launcher from the window's first frame: no start-up animation before it)
+        if (launchAt == null) face = Face.Files;
+        UseOwnFont();
+        StateChanged += (_, _) =>
         {
-            Splash.Visibility = Visibility.Collapsed;
-            LauncherWindow(true);
-            // (development, HOOKSHOT_UI_SHOT: the launcher drawn to a file, Launcher.cs. Away from the screen, and it takes no keys)
-            if (Environment.GetEnvironmentVariable("HOOKSHOT_UI_SHOT") is { Length: > 0 })
-            {
-                ShowActivated = false;
-                ShowInTaskbar = false;
-                WindowStartupLocation = WindowStartupLocation.Manual;
-                (Left, Top) = (-20000, -20000);
-            }
+            var full = WindowState == WindowState.Maximized;
+            Root.Margin = full ? Glass.Overhang(this) : new Thickness(0);
+            LauncherMax.Content = ((char)(full ? 0xE923 : 0xE922)).ToString();   // (Segoe Fluent Icons: restore, maximise)
+            LauncherMax.ToolTip = full ? "Restore" : "Maximize";
+            System.Windows.Automation.AutomationProperties.SetName(LauncherMax, full ? "Restore" : "Maximize");
+        };
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key != System.Windows.Input.Key.Escape || !menuOpen) return;
+            ShowMenu(false);
+            e.Handled = true;
+        };
+        ShowFace(face);
+        Refresh();
+        // (development, HOOKSHOT_UI_SHOT: the window drawn to a file, Launcher.cs. Away from the screen, and it takes no keys)
+        if (Shot != null)
+        {
+            ShowActivated = false;
+            ShowInTaskbar = false;
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            (Left, Top) = (-20000, -20000);
         }
     }
 
@@ -111,45 +115,88 @@ public partial class MainWindow : Window
         }
         if (launchAt is { } launchFolder)   // (Longshot.exe in the game folder, or the game built last: the launcher at once, Launcher.cs)
         {
-            Main.Opacity = 1;   // (under the launcher, for an update or a switch it starts)
-            MainLift.Y = 0;
-            Main.IsHitTestVisible = true;
             ShowLauncher(launchFolder);
             return;
         }
-        Animate();
-        var started = Stopwatch.StartNew();
         if (Environment.GetCommandLineArgs().Contains("--update"))
         {
-            SplashText.Text = "Getting the update…";
-            await Task.Delay(900);
-            ShowMain();
             Updater.FromCommandLine(this);
+            await ShotWhenEnded();
             return;
         }
-        await OpenInstallerPages(started);
+        await OpenFiles(first: true);
+        await ShotWhenEnded();
     }
 
-    /// The installer's own pages: after the start-up screen (splash: since when it shows), or from the launcher's "Build from
-    /// game files" (null: at once)
-    async Task OpenInstallerPages(Stopwatch? splash)
+    /// (development) HOOKSHOT_UI_SHOT with no game to launch: the build's screen as drawn, once what was started here (an
+    /// update, or the button pressed by the preview's "go") has ended, and out
+    async Task ShotWhenEnded()
     {
-        SplashText.Text = "Looking for your game files…";
-        var found = await Task.Run(Finder.FindDumps);
-        dumps.Clear();
-        dumps.AddRange(found);
-        SplashText.Text = found.Count switch { 0 => "No game files found yet", 1 => "Found 1 game file", _ => $"Found {found.Count} game files" };
-        var wait = splash == null ? 0 : 1700 - (int)splash.ElapsedMilliseconds;
-        if (wait > 0) await Task.Delay(wait);
-        ApplySettings();
+        if (Shot == null) return;
+        await Task.Delay(400);
+        while (runner != null || download != null || checking) await Task.Delay(100);
+        await Task.Delay(700);
+        SaveShot(Shot);
+        Application.Current.Shutdown();
+    }
+
+    /// The build's choices on the screen: when there is no game yet (first), or from the menu's "Build from game files". The
+    /// game files are looked for while they show
+    async Task OpenFiles(bool first)
+    {
+        searching = filesOpened == false;
+        ShowFace(Face.Files);
         FillDumps();
-        ShowMain();
-        if (splash != null && Environment.GetEnvironmentVariable("HOOKSHOT_UI_PREVIEW") is { Length: > 0 } preview) { Preview(preview); return; }
+        Refresh();
+        if (!searching) return;
+        filesOpened = true;
+        var found = await Task.Run(Finder.FindDumps);
+        searching = false;
+        // (after any the player gave while they were looked for: dropped on the window, browsed to)
+        dumps.AddRange(found.Where(f => !dumps.Any(d => string.Equals(d.Path, f.Path, StringComparison.OrdinalIgnoreCase))));
+        ApplySettings();
+        if (!first) OutPath.Text = launchFolder;   // (from a game's launcher: that game's folder, not the one built last)
+        FillDumps();
+        Refresh();
+        // (development) the preview's screens are made up and nothing is run; with "go" the game files are checked and the button
+        // is pressed, as a player would ("steps": the menu open in the picture drawn on the way)
+        var go = false;
+        if (first && Environment.GetEnvironmentVariable("HOOKSHOT_UI_PREVIEW") is { Length: > 0 } preview)
+        {
+            Preview(preview);
+            var asked = preview.Split(',', StringSplitOptions.TrimEntries);
+            (go, stepsHalfWay) = (asked.Contains("go"), asked.Contains("steps"));
+            if (!go) return;
+        }
         CheckAll();
         // (from the launcher: the latest release is the one it already asked GitHub for)
-        if (splash != null)
+        if (first)
             latestTag = Environment.GetEnvironmentVariable("HOOKSHOT_LATEST_TAG") is { Length: > 0 } fake ? (fake == "none" ? null : fake) : await Updater.LatestTag();
         RefreshMode();
+        if (!go) return;
+        while (checking) await Task.Delay(100);
+        Refresh();
+        if (LauncherGo.IsEnabled) LauncherGoClick(this, new RoutedEventArgs());
+    }
+    bool filesOpened;
+
+    /// What the screen shows (the launcher's own states are Launcher.cs's): the places between the wordmark and the button, the
+    /// button or the strip in its place, the buttons at the bottom left, and what the menu holds
+    void ShowFace(Face to)
+    {
+        face = to;
+        FilesBlock.Visibility = to == Face.Files ? Visibility.Visible : Visibility.Collapsed;
+        if (to != Face.Problem) ProblemBlock.Visibility = Visibility.Collapsed;
+        if (to != Face.Launcher) ReadyBlock.Visibility = Visibility.Collapsed;
+        LauncherGo.Visibility = to == Face.Build ? Visibility.Hidden : Visibility.Visible;
+        LauncherProgress.Visibility = to == Face.Build ? Visibility.Visible : Visibility.Collapsed;
+        LauncherVersion.Foreground = Brushes.White;
+        LauncherVersion.IsHitTestVisible = false;
+        (LauncherStatus.ToolTip, LauncherStatus.IsHitTestVisible, LauncherStatus.Cursor) = (null, false, null);
+        LauncherStatus.Foreground = QuietInk;
+        if (to != Face.Build && to != Face.Problem) ShowDetails(false);
+        ShowMenu(false, atOnce: true);
+        ShowPills();
     }
 
     // ================= what the button does: build, update the game, play it, or get the newer builder =================
@@ -176,7 +223,7 @@ public partial class MainWindow : Window
 
     void RefreshMode()
     {
-        if (BuildButton == null || updating || runner != null) return;
+        if (LauncherGo == null || face != Face.Files || updating || runner != null) return;
         var game = OutPath.Text.Length > 2 ? GameVersion(OutPath.Text) : null;
         var builder = Tools.Find()?.Version;
         // (the newest release known: GitHub's, else this builder's own. v2.0.0 took a GitHub that did not answer for "up to date")
@@ -185,34 +232,35 @@ public partial class MainWindow : Window
         else if (game != null && !sourcePicked) mode = Mode.UpToDate;
         else if (latestTag != null && builder != null && builder != latestTag) mode = Mode.UpdateBuilder;
         else mode = Mode.Build;
+        // (the button's word, what is under it, and the line under the choices that says what the word will do)
+        var (word, under) = ("Build", builder ?? "");
+        modeNote = "";
         switch (mode)
         {
             case Mode.UpdateGame:
-                FilesTitle.Text = "Update available";
-                FilesSub.Text = $"Longshot {updateTarget} is available. Your game is {game}: Update builds it again from the game files kept in " +
-                                "its folder, compiling only what changed.";
-                BuildButton.Content = "Update";
+                (word, under) = ("Update", "Update available");
+                modeNote = $"Longshot {updateTarget} is available. Your game is {game}: Update builds it again from the game files kept in " +
+                           "its folder, compiling only what changed.";
                 break;
             case Mode.UpToDate:
-                FilesTitle.Text = "Your game is up to date";
-                FilesSub.Text = latestTag == null
+                (word, under) = ("Play", "Your game is up to date");
+                modeNote = latestTag == null
                     ? $"Your game is {game}, as this builder. GitHub did not answer, so newer versions could not be checked."
-                    : $"{game} is the latest version. Pick game files below only to build it again from scratch.";
-                BuildButton.Content = "Play";
+                    : $"{game} is the latest version. Pick game files only to build it again from scratch.";
                 break;
             case Mode.UpdateBuilder:
-                FilesTitle.Text = "Build your game";
-                FilesSub.Text = $"Longshot Builder {latestTag} is available (this one is {builder}): update it first, then build.";
-                BuildButton.Content = "Update builder";
+                (word, under) = ("Update", "Update the builder first");
+                modeNote = $"Longshot Builder {latestTag} is available (this one is {builder}): update it first, then build.";
                 break;
             default:
-                FilesTitle.Text = "Build your game";
-                FilesSub.Text = "Pick your game files and where the game goes. Longshot does the rest, once.";
-                BuildButton.Content = "Build the game";
+                if (!SourceReady) under = searching ? "Looking for your game files" : "Pick your game files to build";
                 break;
         }
-        BuildButton.IsEnabled = mode != Mode.Build || (SourceReady && OutPath.Text.Length > 2);
-        AboutText.Visibility = mode is Mode.Build ? Visibility.Visible : Visibility.Collapsed;
+        LauncherGoText.Text = word;
+        LauncherGo.IsEnabled = mode != Mode.Build || (SourceReady && OutPath.Text.Length > 2);
+        LauncherVersion.Content = under.Length > 0 ? under : "Build your game";
+        LauncherVersion.Foreground = mode == Mode.Build && !SourceReady ? QuietInk : Brushes.White;
+        ShowFilesNote();
     }
 
     // ---- the launcher: Hookshot Launcher.exe in a game folder starts this with --launch <folder> (builder/setup/setup.c) ----
@@ -294,6 +342,7 @@ public partial class MainWindow : Window
         if (!string.IsNullOrEmpty(s.Out)) OutPath.Text = s.Out;
         DlssTick.IsChecked = s.Dlss;
         FsrTick.IsChecked = s.Fsr;
+        if (sourcePicked) return;   // (game files given here already, dropped on the window: not last time's over them)
         if (s.Romfs != null && s.Exefs != null && Directory.Exists(s.Romfs) && File.Exists(System.IO.Path.Combine(s.Exefs, "main")))
         {
             romfs = s.Romfs;
@@ -302,12 +351,12 @@ public partial class MainWindow : Window
         }
         else if (s.Nup != null && File.Exists(s.Nup))
         {
-            if (!dumps.Any(d => string.Equals(d.Path, s.Nup, StringComparison.OrdinalIgnoreCase)))
-            {
-                var info = new FileInfo(s.Nup);
+            // (the file as the list writes it: a path kept in Windows' short form, C:\USERS\LONGNA~1, is written out whole
+            // there, and the file chosen was then one the list did not have, never checked and never built from)
+            var info = new FileInfo(s.Nup);
+            if (!dumps.Any(d => string.Equals(d.Path, info.FullName, StringComparison.OrdinalIgnoreCase)))
                 dumps.Insert(0, new Dump(info.FullName, "Last time", info.Length, info.LastWriteTime));
-            }
-            chosenNup = s.Nup;
+            chosenNup = info.FullName;
         }
     }
 
@@ -324,174 +373,141 @@ public partial class MainWindow : Window
         catch (Exception) { }
     }
 
-    /// (development) HOOKSHOT_UI_PREVIEW=build|ready|problem|update: one screen with made-up progress, nothing run
+    /// (development) HOOKSHOT_UI_PREVIEW=found|build|ready|problem|stopped|update, and menu after any of them: one screen with
+    /// made-up progress, nothing run. found: the choices with a game file found (with none of them: as this PC has it)
     void Preview(string what)
     {
-        switch (what)
-        {
-            case "build":
-                MakeRows(update: false, shaders: true);
-                SetStep(1);
-                ShowPage(BuildPage);
-                rows["read"].Begin(); rows["read"].Done(); rows["read"].Small("Version checked");
-                rows["lift"].Begin(); rows["lift"].Done();
-                rows["compile"].Begin(); rows["compile"].Small("31 of 58 files");
-                SetProgress(0.54);
-                BuildNote.Text = "About 19 minutes left · your PC stays usable";
-                break;
-            case "ready":
-                finished = OutPath.Text;
-                ShowReady();
-                break;
-            case "problem":
-                ShowProblem("Files of the builder's own compiler are missing (clang.exe in tools\\llvm-mingw\\bin).", tools: true);
-                break;
-            case "update":
-                BeginUpdate(OutPath.Text, "honest-eta");
-                rows["download"].Done(); rows["download"].Small("3 MB · build tools unchanged");
-                rows["read"].Begin(); rows["read"].Done();
-                rows["lift"].Begin(); rows["lift"].Done();
-                rows["compile"].Begin(); rows["compile"].Small("7 of 516 files");
-                SetProgress(0.62);
-                BuildNote.Text = "About 3 minutes left. Your current game stays as it is until the new one is complete.";
-                break;
-        }
-    }
-
-    void Animate()
-    {
-        var forever = RepeatBehavior.Forever;
-        var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
-        HaloScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.94, 1.04, TimeSpan.FromSeconds(1.2)) { AutoReverse = true, RepeatBehavior = forever, EasingFunction = ease });
-        HaloScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.94, 1.04, TimeSpan.FromSeconds(1.2)) { AutoReverse = true, RepeatBehavior = forever, EasingFunction = ease });
-        Halo.BeginAnimation(OpacityProperty, new DoubleAnimation(0.6, 1, TimeSpan.FromSeconds(1.2)) { AutoReverse = true, RepeatBehavior = forever, EasingFunction = ease });
-        BobLift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, -6, TimeSpan.FromSeconds(1.2)) { AutoReverse = true, RepeatBehavior = forever, EasingFunction = ease });
-        BobTurn.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(-4, 2, TimeSpan.FromSeconds(1.2)) { AutoReverse = true, RepeatBehavior = forever, EasingFunction = ease });
-        Sweep.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(-88, 208, TimeSpan.FromSeconds(1.2)) { RepeatBehavior = forever, EasingFunction = ease });
-    }
-
-    /// The hookshot fades out and the first step fades in, in the same window
-    void ShowMain()
-    {
-        var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(450));
-        fade.Completed += (_, _) => { Splash.Visibility = Visibility.Collapsed; StopSplash(); };
-        Splash.BeginAnimation(OpacityProperty, fade);
-        SplashScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1.04, TimeSpan.FromMilliseconds(500)));
-        SplashScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1.04, TimeSpan.FromMilliseconds(500)));
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-        Main.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(500)) { BeginTime = TimeSpan.FromMilliseconds(150) });
-        MainLift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(600)) { BeginTime = TimeSpan.FromMilliseconds(150), EasingFunction = ease });
-        Main.IsHitTestVisible = true;
-    }
-
-    void StopSplash()
-    {
-        foreach (var (o, p) in new (Animatable, DependencyProperty)[] { (HaloScale, ScaleTransform.ScaleXProperty), (HaloScale, ScaleTransform.ScaleYProperty),
-                     (BobLift, TranslateTransform.YProperty), (BobTurn, RotateTransform.AngleProperty), (Sweep, TranslateTransform.XProperty) })
-            o.BeginAnimation(p, null);
-        Halo.BeginAnimation(OpacityProperty, null);
-    }
-
-    // ================= the step pill: Game files > Build > Play =================
-
-    void SetStep(int on)
-    {
-        StepItems.Children.Clear();
-        var names = new[] { "Game files", "Build", "Play" };
-        for (var i = 0; i < names.Length; i++)
-        {
-            if (i > 0)
-                StepItems.Children.Add(new Path { Data = Geometry.Parse("M0,0 L4,4 L0,8"), Stroke = (Brush)FindResource("InkSoft"), StrokeThickness = 1.6,
-                                                  Opacity = 0.45, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(5, 0, 5, 0) });
-            var done = i < on;
-            var text = new TextBlock { Text = names[i], FontSize = 13, VerticalAlignment = VerticalAlignment.Center,
-                                       FontWeight = i == on ? FontWeights.SemiBold : FontWeights.Medium,
-                                       Foreground = (Brush)FindResource(i == on ? "Ink" : done ? "InkSoft" : "InkFaint") };
-            var inner = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            if (done)
+        foreach (var part in what.Split(',', StringSplitOptions.TrimEntries))
+            switch (part)
             {
-                var tick = new Grid { Width = 22, Height = 22, Margin = new Thickness(0, 0, 8, 0) };
-                tick.Children.Add(new Ellipse { Fill = (Brush)FindResource("GoSoft") });
-                tick.Children.Add(new Path { Data = Geometry.Parse("M0,4 L3.5,7.5 L10,0"), Stroke = (Brush)FindResource("Go"), StrokeThickness = 1.8,
-                                             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
-                inner.Children.Add(tick);
+                case "found":
+                    var made = new Dump(@"C:\Users\you\Downloads\ocarina.nup", "Downloads", 24L << 30, DateTime.Now);
+                    dumps.Insert(0, made);
+                    checks[made.Path] = (true, "This is the version Longshot supports.");
+                    chosenNup = made.Path;
+                    romfs = exefs = null;
+                    FillDumps();
+                    Refresh();
+                    break;
+                case "build":
+                    prepareNow = true;
+                    MakeRows(update: false, shaders: true);
+                    StepsTitle.Text = "Building v2.1.0";
+                    ShowFace(Face.Build);
+                    rows["read"].Begin(); rows["read"].Done();
+                    rows["lift"].Begin(); rows["lift"].Done();
+                    rows["compile"].Begin(); rows["compile"].Count("31 of 58");
+                    SetProgress(0.42);
+                    LauncherStatus.Text = "Compiling 12:40 · About 18 minutes left · your PC stays usable";
+                    break;
+                case "ready":
+                    finished = OutPath.Text;
+                    elapsed.Reset();
+                    ShowReady();
+                    break;
+                case "problem":
+                    ShowProblem("Files of the builder's own compiler are missing (clang.exe in tools\\llvm-mingw\\bin).", tools: true);
+                    break;
+                case "stopped":
+                    ShowProblem("The compiler stopped on src_4.c.", tools: false);
+                    break;
+                case "update":
+                    BeginUpdate(OutPath.Text, "v2.2.0");
+                    rows["download"].Done(); rows["download"].Small("3 MB · build tools unchanged");
+                    rows["read"].Begin(); rows["read"].Done();
+                    rows["lift"].Begin(); rows["lift"].Done();
+                    rows["compile"].Begin(); rows["compile"].Count("7 of 516");
+                    SetProgress(0.62);
+                    LauncherStatus.Text = "About 3 minutes left. Your current game stays as it is until the new one is complete.";
+                    break;
+                case "menu":
+                    ShowMenu(true, atOnce: true);
+                    break;
             }
-            inner.Children.Add(text);
-            var pill = new Border { Height = 30, CornerRadius = new CornerRadius(15), Padding = done ? new Thickness(4, 0, 14, 0) : new Thickness(14, 0, 14, 0), Child = inner };
-            if (i == on)
-            {
-                text.Foreground = Brushes.White;
-                pill.Background = new LinearGradientBrush(Color.FromRgb(0x4B, 0x70, 0xF0), Color.FromRgb(0x35, 0x57, 0xD6), 90);
-                pill.Effect = new DropShadowEffect { Color = Color.FromRgb(0x3D, 0x63, 0xE6), BlurRadius = 18, ShadowDepth = 6, Direction = 270, Opacity = 0.6 };
-            }
-            StepItems.Children.Add(pill);
-        }
-        StepPill.Visibility = Visibility.Visible;
-        VersionChip.Visibility = Visibility.Collapsed;
-    }
-
-    void ShowPage(FrameworkElement page)
-    {
-        foreach (var p in new FrameworkElement[] { FilesPage, BuildPage, ReadyPage, ProblemPage })
-            p.Visibility = p == page ? Visibility.Visible : Visibility.Collapsed;
-        page.Opacity = 0;
-        page.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(250)));
     }
 
     // ================= 1: game files =================
 
+    /// The game files' row (what is chosen, in the words of one line) and the line under the choices
     void FillDumps()
     {
-        DumpList.Children.Clear();
-        foldersNoteBlock = null;
-        if (romfs != null && exefs != null && foldersNote != null)
+        var (text, ink, word) = ("Not found on this PC", QuietInk, "Browse…");
+        string? tip = null;
+        if (romfs != null && exefs != null) (text, ink, word, tip) = ("romfs and exefs folders", Brushes.White, "Change", foldersNote);
+        else if (chosenNup != null)
         {
-            foldersNoteBlock = new TextBlock { Text = foldersNote, Style = (Style)FindResource("Note"), Margin = new Thickness(16, 12, 16, 12) };
-            DumpList.Children.Add(foldersNoteBlock);
+            var d = dumps.FirstOrDefault(x => string.Equals(x.Path, chosenNup, StringComparison.OrdinalIgnoreCase));
+            var where = d?.Where is { Length: > 0 } w && !w.Contains(' ') ? $" in {w}" : "";
+            checks.TryGetValue(chosenNup, out var c);
+            (text, ink, word, tip) = (System.IO.Path.GetFileName(chosenNup) + where, c is { Ok: false } ? BadInk : Brushes.White, "Change", chosenNup);
         }
-        if (dumps.Count == 0)
+        else if (searching) (text, ink, word) = ("Looking on this PC…", DimInk, "Browse…");
+        else if (dumps.Count > 0) (text, word) = ("None chosen", "Change");
+        (SourceText.Text, SourceText.Foreground, SourceText.ToolTip, SourceChange.Content) = (text, ink, tip, word);
+        ShowFilesNote();
+    }
+
+    /// The line under the choices: why the file chosen cannot be used, else what the button will do when that is not a build,
+    /// else (with no game files yet) the other ways to give them
+    void ShowFilesNote()
+    {
+        if (FilesNote == null) return;
+        FilesNote.Inlines.Clear();
+        FilesNote.Foreground = QuietInk;
+        (bool Ok, string Text)? check = null;
+        if (chosenNup != null && romfs == null) checks.TryGetValue(chosenNup, out check);
+        if (check is { Ok: false })
         {
-            DumpList.Children.Add(new TextBlock
-            {
-                Text = "No .nup files in Downloads, Desktop, Documents or the top folders of your drives. Browse to yours, or drop it on this window.",
-                Style = (Style)FindResource("Note"), Margin = new Thickness(16, 14, 16, 14),
-            });
-            return;
+            // (issue 563: "Can't be read" said why only under the pointer, which players did not find: the reason is said)
+            FilesNote.Inlines.Add(check.Value.Text.StartsWith("This is build") ? "Not the supported version. " + check.Value.Text : check.Value.Text);
+            FilesNote.Foreground = BadInk;
         }
-        for (var i = 0; i < dumps.Count; i++)
+        else if (modeNote.Length > 0) FilesNote.Inlines.Add(modeNote);
+        else if (chosenNup != null && romfs == null && check == null && !searching) FilesNote.Inlines.Add("Checking that it is the supported version…");
+        else if (!SourceReady && !searching)
         {
-            var d = dumps[i];
-            if (i > 0) DumpList.Children.Add(new Border { Height = 1, Background = (Brush)FindResource("GlassLine") });
-            var name = new TextBlock { Text = System.IO.Path.GetFileName(d.Path), FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
-            var meta = new TextBlock { Text = $"{d.Where} · {Finder.Size(d.Size)} · {Finder.Ago(d.Modified)}", Style = (Style)FindResource("Faint") };
-            var texts = new StackPanel { Children = { name, meta }, Margin = new Thickness(0, 0, 12, 0) };
-            // (issue 563: "Can't be read" said why only in the chip's tooltip, which players did not find; the reason is in the row)
-            if (checks.TryGetValue(d.Path, out var why) && why is { Ok: false } && !why.Value.Text.StartsWith("This is build"))
-                texts.Children.Add(new TextBlock { Text = why.Value.Text, Style = (Style)FindResource("Faint"), TextWrapping = TextWrapping.Wrap,
-                                                   Foreground = (Brush)FindResource("Bad"), Margin = new Thickness(0, 4, 0, 0) });
-            var grid = new Grid { ColumnDefinitions = { new ColumnDefinition(), new ColumnDefinition { Width = GridLength.Auto } } };
-            var chip = Chip(d.Path);
-            Grid.SetColumn(chip, 1);
-            grid.Children.Add(texts);
-            grid.Children.Add(chip);
-            var row = new RadioButton { Style = (Style)FindResource("DumpRow"), GroupName = "Dumps", Content = grid, Tag = d.Path, ToolTip = d.Path,
-                                        IsChecked = string.Equals(d.Path, chosenNup, StringComparison.OrdinalIgnoreCase) };
-            row.Checked += (_, _) => Choose(d.Path);
-            DumpList.Children.Add(row);
+            FilesNote.Inlines.Add("or drop a .nup file anywhere on this window · ");
+            var folders = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run("use romfs and exefs folders"));
+            folders.Click += BrowseFolders;
+            FilesNote.Inlines.Add(folders);
         }
     }
 
-    Border Chip(string path)
+    /// The word at the right of the game files' row: the files found (the one chosen marked, each with what its check said)
+    /// and the two ways to choose others. With none found, the file is browsed for at once
+    void SourceChangeClick(object sender, RoutedEventArgs e)
     {
-        checks.TryGetValue(path, out var c);
-        var (text, brush) = c == null ? ("Checking…", "InkFaint")
-            : c.Value.Ok ? ("✓ Supported version", "Go")
-            : c.Value.Text.StartsWith("This is build") ? ("Not the supported version", "Warn")
-            : ("Can't be read", "Bad");
-        var chip = new Border { Style = (Style)FindResource("Chip"), Child = new TextBlock { Text = text, FontSize = 12, Foreground = (Brush)FindResource(brush), VerticalAlignment = VerticalAlignment.Center } };
-        if (c is { Ok: false }) chip.ToolTip = c.Value.Text;
-        if (c is { Ok: true }) chip.Background = (Brush)FindResource("GoSoft");
-        return chip;
+        if (dumps.Count == 0 && romfs == null)
+        {
+            BrowseNup(sender, e);
+            return;
+        }
+        // (made here, so not under the screen in the tree: its look is the screen's own, given by hand)
+        var list = new ContextMenu
+        {
+            PlacementTarget = SourceChange, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom,
+            Style = (Style)SourceChange.FindResource(typeof(ContextMenu)), ItemContainerStyle = (Style)SourceChange.FindResource(typeof(MenuItem)),
+        };
+        foreach (var d in dumps)
+        {
+            checks.TryGetValue(d.Path, out var c);
+            var said = c == null ? "checking…" : c.Value.Ok ? "supported version"
+                     : c.Value.Text.StartsWith("This is build") ? "not the supported version" : "can't be read";
+            var item = new MenuItem
+            {
+                Header = $"{System.IO.Path.GetFileName(d.Path)} · {d.Where} · {Finder.Size(d.Size)} · {said}", ToolTip = c is { Ok: false } ? c.Value.Text : d.Path,
+                IsChecked = romfs == null && string.Equals(d.Path, chosenNup, StringComparison.OrdinalIgnoreCase),
+            };
+            item.Click += (_, _) => Choose(d.Path);
+            list.Items.Add(item);
+        }
+        var browse = new MenuItem { Header = "Browse for a .nup file…" };
+        browse.Click += BrowseNup;
+        list.Items.Add(browse);
+        var folders = new MenuItem { Header = "Use romfs and exefs folders…" };
+        folders.Click += BrowseFolders;
+        list.Items.Add(folders);
+        list.IsOpen = true;
     }
 
     /// Each found file's version, one at a time (the check unpacks into one probe folder); the first good one is chosen
@@ -527,8 +543,7 @@ public partial class MainWindow : Window
         sourcePicked = true;
         chosenNup = path;
         romfs = exefs = null;
-        if (foldersNoteBlock != null) DumpList.Children.Remove(foldersNoteBlock);   // (not the whole list again: this row's own event)
-        foldersNoteBlock = null;
+        FillDumps();
         Refresh();
     }
 
@@ -548,27 +563,39 @@ public partial class MainWindow : Window
     bool SourceReady => romfs != null && exefs != null
         || chosenNup != null && checks.TryGetValue(chosenNup, out var c) && c is { Ok: true };
 
-    void PathsChanged(object sender, RoutedEventArgs e) => Refresh();
+    void PathsChanged(object sender, RoutedEventArgs e)
+    {
+        OutPath.ToolTip = OutPath.Text;   // (a folder longer than its row: whole under the pointer)
+        Refresh();
+    }
 
     void Refresh()
     {
-        if (BuildButton == null) return;
-        BuildButton.IsEnabled = SourceReady && OutPath.Text.Length > 2;
+        if (LauncherGo == null || face != Face.Files) return;
         ShowWork();
-        try
-        {
-            var root = System.IO.Path.GetPathRoot(System.IO.Path.GetFullPath(OutPath.Text))!;
-            var free = new DriveInfo(root).AvailableFreeSpace;
-            SpaceBar.Value = Math.Min(1, NeededBytes / (double)Math.Max(1, free));
-            SpaceBar.Foreground = (Brush)FindResource(free >= NeededBytes ? "Go" : "Bad");
-            SpaceText.Text = $"Needs 45 GB · {root.TrimEnd('\\')} has {free >> 30} GB free";
-            SpaceText.Foreground = (Brush)FindResource(free >= NeededBytes ? "InkSoft" : "Bad");
-        }
-        catch (Exception)
-        {
-            SpaceText.Text = "Needs 45 GB";
-        }
         RefreshMode();
+        if (updating || runner != null) return;
+        // (the line at the foot: how long and how much room, in red when the drive has not got it; with no game files yet,
+        // where they come from)
+        var (text, ink) = ("Longshot builds from your own copy of the game. It never downloads one.", QuietInk);
+        if (Tools.Find() == null)
+            text = "Longshot's build tools are missing from its folder: press Build and Longshot offers to download them again.";
+        else if (mode != Mode.Build) text = "";
+        else if (SourceReady || searching || chosenNup != null)
+        {
+            try
+            {
+                var root = System.IO.Path.GetPathRoot(System.IO.Path.GetFullPath(OutPath.Text))!;
+                var free = new DriveInfo(root).AvailableFreeSpace;
+                text = $"About 45 minutes, once · needs 45 GB, {root.TrimEnd('\\')} has {free >> 30} GB free";
+                if (free < NeededBytes) ink = BadInk;
+            }
+            catch (Exception)
+            {
+                text = "About 45 minutes, once · needs 45 GB";
+            }
+        }
+        (LauncherStatus.Text, LauncherStatus.Foreground) = (text, ink);
     }
 
     /// The game folder or the build files folder on a hard drive: the build works, but much more slowly than on an SSD. Null
@@ -589,7 +616,9 @@ public partial class MainWindow : Window
 
     void Dropped(object sender, DragEventArgs e)
     {
-        if (runner != null || e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: > 0 } paths) return;
+        if (runner != null || LauncherBusy || e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: > 0 } paths) return;
+        // (game files dropped on a game's launcher: a build from them, its choices on the screen)
+        if (face != Face.Files) _ = OpenFiles(first: false);
         foreach (var p in paths)
         {
             if (p.EndsWith(".nup", StringComparison.OrdinalIgnoreCase) && File.Exists(p)) AddDump(p, "Dropped");
@@ -666,18 +695,21 @@ public partial class MainWindow : Window
         if (WorkNote == null) return;
         var work = Storage.Work;
         WorkReset.Visibility = Storage.WorkChosen ? Visibility.Visible : Visibility.Collapsed;
+        // (the menu's row says the drive; how much and why is under the pointer; the row is red when the drive has not the room)
         WorkNote.Text = Storage.KeepBuildFiles
             ? $"Build files: about {Storage.Gb(Storage.BuildFilesBytes)}, kept in {work} so that updates are quick (HOOKSHOT_KEEP_BUILD_FILES)."
             : $"Build files: about {Storage.Gb(Storage.BuildFilesBytes)} in {work} while it builds; when the game is ready about 1 GB stays (the compiled code) so that updates compile only what changed.";
-        WorkNote.Foreground = (Brush)FindResource("InkSoft");
+        WorkText.Text = "Build files";
+        WorkChange.ClearValue(ForegroundProperty);
         try
         {
             var root = System.IO.Path.GetPathRoot(System.IO.Path.GetFullPath(work))!;
+            WorkText.Text = $"Build files on {root.TrimEnd('\\')}";
             var free = new DriveInfo(root).AvailableFreeSpace;
             if (free < Storage.BuildFilesBytes)
             {
                 WorkNote.Text += $" {root.TrimEnd('\\')} has only {Storage.Gb(free)} free.";
-                WorkNote.Foreground = (Brush)FindResource("Bad");
+                WorkChange.Foreground = BadInk;
             }
         }
         catch (Exception) { }
@@ -687,11 +719,9 @@ public partial class MainWindow : Window
     {
         if (LanguageBox.SelectedItem is not Language l) return;
         lang = l;
-        CancelButton.Content = T(S.Cancel);
-        BackButton.Content = T(S.Back);
-        OpenButton.Content = T(S.OpenFolder);
-        PlayText.Text = T(S.Play);
-        ShowLog.Content = T(ShowLog.IsChecked == true ? S.HideDetails : S.ShowDetails);
+        LauncherCancel.Content = T(S.Cancel);
+        StoppedBack.Content = FilesBack.Content = T(S.Back);
+        DetailsText.Text = T(detailsShown ? S.HideDetails : S.ShowDetails);
     }
 
     // ================= 2: the build =================
@@ -710,8 +740,8 @@ public partial class MainWindow : Window
                 return;
             case Mode.UpdateBuilder:
                 SaveSettings();
-                BuildButton.IsEnabled = false;
-                BuildButton.Content = "Getting the new builder…";
+                LauncherGo.IsEnabled = false;
+                LauncherStatus.Text = "Getting the new builder…";
                 try { await Updater.RunLatestSetup(this, Array.Empty<string>()); }
                 catch (Exception ex)
                 {
@@ -756,11 +786,12 @@ public partial class MainWindow : Window
 
     static readonly (string Id, string Build, string Update)[] Stages =
     {
-        ("download", "", "Download the update"),
-        ("read", "Read your game files", "Read the game files kept in the folder"),
-        ("lift", "Translate the game to PC code", "Translate the game to PC code"),
-        ("compile", "Compile", "Compile changed files"),
-        ("finish", "Put the game together", "Swap in the new game"),
+        // (as the menu has room for them: a row of 192 in a text of 16)
+        ("download", "", "Get the update"),
+        ("read", "Read the game files", "Read the kept files"),
+        ("lift", "Translate to PC code", "Translate to PC code"),
+        ("compile", "Compile", "Compile"),
+        ("finish", "Put it together", "Swap in the game"),
         (ShaderStep.Id, "Prepare the shaders", "Prepare the shaders"),
     };
     static readonly Dictionary<string, (double From, double Size)> WithShaders = new()
@@ -779,26 +810,43 @@ public partial class MainWindow : Window
     string? shadersLater;
     TimeSpan? builtIn;   // (at @@times: the build without the shaders' minutes, as build_times.json keeps it)
 
-    void MakeRows(bool update, bool shaders)
+    /// The steps in the menu (Paper: "v3 - Building"). download: the update, or a version's builder, is downloaded first
+    void MakeRows(bool update, bool shaders, bool download = true)
     {
         StageList.Children.Clear();
         rows.Clear();
+        current = null;
+        filesChanged = -1;
+        filesDone = filesOf = filesCompiled = 0;
         Weight = shaders ? WithShaders : WithoutShaders;
-        var list = Stages.Where(s => (update || s.Id != "download") && (shaders || s.Id != ShaderStep.Id)).ToList();
-        for (var i = 0; i < list.Count; i++)
+        var list = Stages.Where(s => ((update && download) || s.Id != "download") && (shaders || s.Id != ShaderStep.Id)).ToList();
+        foreach (var s in list)
         {
-            var row = new StepRow(i + 1, update ? list[i].Update : list[i].Build, last: i == list.Count - 1);
-            rows[list[i].Id] = row;
+            var row = new StepRow(update ? s.Update : s.Build);
+            rows[s.Id] = row;
             StageList.Children.Add(row.Root);
         }
-        if (update) rows["read"].Small("Your game files are kept: the .nup isn't needed");
+    }
+
+    /// What a line of the build tools means for the steps: the step that begins (the one before it is done), and how many of
+    /// the files to compile are. The build here and a version the launcher brings (Launcher.cs) both say these
+    void StepsLine(string line)
+    {
+        if (line.StartsWith("@@stage "))
+        {
+            var id = line.Split(' ')[1];
+            if (current != null && rows.TryGetValue(current, out var was)) was.Done();
+            current = id;
+            if (rows.TryGetValue(id, out var row)) row.Begin();
+        }
+        else if (line.StartsWith("@@plan ") || line.StartsWith("@@file ")) Number(line);
     }
 
     /// dlss: NVIDIA DLSS, its license accepted: NVIDIA's SDK fetched into Storage.NgxSdk first (only what is missing), and built in
     void Run(Tools tools, List<string> args, bool keepRows = false, bool dlss = false)
     {
         // (a warning, not a stop: the player may have no other folder with the room. An update keeps its rows and its own flow)
-        if (!keepRows && HardDriveWarning() is { } slow &&
+        if (!keepRows && Shot == null && HardDriveWarning() is { } slow &&
             MessageBox.Show(this, slow, "Hookshot", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
             return;
         int? workers;
@@ -812,10 +860,8 @@ public partial class MainWindow : Window
         {
             updating = false;
             MakeRows(update: false, shaders: prepareNow);
-            SetStep(1);
-            BuildTitle.Text = "Building your game";
-            UpdateBar.Visibility = Visibility.Collapsed;
-            RingBox.Visibility = Visibility.Visible;
+            buildTitle = "Building your game";
+            StepsTitle.Text = tools.Version is { } version ? $"Building {version}" : "Building your game";
         }
         log.Clear();
         Log.Clear();
@@ -831,8 +877,7 @@ public partial class MainWindow : Window
         shadersBegan = false;
         shadersLater = null;
         builtIn = null;
-        ShowPage(BuildPage);
-        CancelButton.Visibility = Visibility.Visible;
+        ShowFace(Face.Build);
         SetProgress(updating ? Weight["read"].From : 0);
         elapsed.Restart();
         compileClock.Reset();
@@ -853,9 +898,7 @@ public partial class MainWindow : Window
         if (line.StartsWith("@@stage "))
         {
             var id = line.Split(' ')[1];
-            if (current != null && rows.TryGetValue(current, out var was)) was.Done();
-            current = id;
-            if (rows.TryGetValue(id, out var row)) row.Begin();
+            StepsLine(line);
             if (id == "compile") compileClock.Restart();
             if (id == ShaderStep.Id) shadersBegan = true;
             if (Weight.TryGetValue(id, out var w)) SetProgress(w.From);
@@ -880,7 +923,7 @@ public partial class MainWindow : Window
         else if (FilesLine.Match(line) is { Success: true } m) filesOf = int.Parse(m.Groups[1].Value);
         else if (FileLine.IsMatch(line)) filesDone++;
         if (current == "compile" && filesChanged < 0 && filesOf > 0 && rows.TryGetValue("compile", out var c))
-            c.Small($"{filesDone} of {filesOf} files");
+            c.Count($"{filesDone} of {filesOf}");
         AddLog(line);
     }
 
@@ -917,9 +960,9 @@ public partial class MainWindow : Window
     void ChangedFiles()
     {
         if (filesChanged < 0 || !rows.TryGetValue("compile", out var row)) return;
-        row.Small(filesChanged == 0 ? "Everything is already built"
-                : filesChanged >= filesOf ? $"{filesCompiled} of {filesChanged} files"
-                : $"{filesCompiled} of {filesChanged} changed files");
+        // (the count at the row's right, as drawn: "31 of 58")
+        if (filesChanged == 0) row.Small("Everything is already built");
+        else row.Count($"{filesCompiled} of {filesChanged}");
     }
 
     void AddLog(string line)
@@ -933,24 +976,25 @@ public partial class MainWindow : Window
         }
     }
 
+    /// How far the build is: the strip fills from the left in the button's place, and the line under it says the number
     void SetProgress(double f)
     {
         f = Math.Clamp(f, 0, 1);
-        RingText.Text = $"{(int)(f * 100)}%";
-        UpdateBar.Value = f;
-        const double r = 55, c = 60;
-        if (f >= 0.999) { RingArc.Data = new EllipseGeometry(new Point(c, c), r, r); return; }
-        var a = f * 2 * Math.PI;
-        var end = new Point(c + r * Math.Sin(a), c - r * Math.Cos(a));
-        var fig = new PathFigure { StartPoint = new Point(c, c - r), IsClosed = false };
-        fig.Segments.Add(new ArcSegment(end, new Size(r, r), 0, f > 0.5, SweepDirection.Clockwise, true));
-        RingArc.Data = f < 0.002 ? null : new PathGeometry(new[] { fig });
+        ProgressClip.Rect = new Rect(0, 0, LauncherProgress.Width * f, LauncherProgress.Height);
+        if (face == Face.Build) LauncherVersion.Content = $"{buildTitle} - {(int)(f * 100)}%";
+        if (Shot != null && runner != null && !shotWorking && f >= 0.4)   // (development: the build drawn once, on the way)
+        {
+            shotWorking = true;
+            Tick();
+            if (stepsHalfWay) ShowMenu(true, atOnce: true);
+            SaveShot(System.IO.Path.ChangeExtension(Shot, null) + "-working.png");
+            if (stepsHalfWay) ShowMenu(false, atOnce: true);
+        }
     }
 
     void Tick()
     {
-        foreach (var r in rows.Values) r.Tick();
-        if (runner == null) return;
+        if (runner == null || face != Face.Build) return;
         var tail = updating ? ". Your current game stays as it is until the new one is complete." : " · your PC stays usable";
         if (current == "compile")
         {
@@ -958,10 +1002,34 @@ public partial class MainWindow : Window
             var left = compileEta >= 0 ? TimeLeft(compileEta)
                 : compiled > 0.03 ? TimeLeft(compileClock.Elapsed.TotalSeconds / compiled * (1 - compiled) + 60)
                 : "Estimating…";
-            BuildNote.Text = $"Compiling {Clock(compileClock.Elapsed)} · {left}{tail}";
+            LauncherStatus.Text = $"Compiling {Clock(compileClock.Elapsed)} · {left}{tail}";
             return;
         }
-        BuildNote.Text = (updating ? "Working…" : "Usually about 45 minutes") + tail;
+        LauncherStatus.Text = (updating ? "Working…" : "Usually about 45 minutes") + tail;
+    }
+
+    /// What the hidden programs said, over the picture: Show details in the menu's steps, and the line that says why a build
+    /// stopped (the launcher's own work too, Launcher.cs: whichever of the two last ran)
+    void ShowDetails(bool show)
+    {
+        if (Log == null) return;
+        detailsShown = show;
+        Log.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        DetailsText.Text = T(show ? S.HideDetails : S.ShowDetails);
+        DetailsTurn.ScaleY = show ? -1 : 1;
+        if (!show) return;
+        var said = face == Face.Launcher ? workLog.ToString() : log.ToString();
+        Log.Text = said.Length > 200_000 ? said[^200_000..] : said;
+        Log.ScrollToEnd();
+    }
+
+    void DetailsClick(object sender, RoutedEventArgs e) => ShowDetails(!detailsShown);
+
+    /// (the line at the foot, pressed while it says why something stopped: what the programs said)
+    void StatusClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        ShowDetails(!detailsShown);
+        e.Handled = true;
     }
 
     static string Clock(TimeSpan t) => $"{(int)t.TotalMinutes}:{t.Seconds:00}";
@@ -993,25 +1061,17 @@ public partial class MainWindow : Window
         }
         if (failure == "cancelled")
         {
-            SetStep(0);
-            ShowPage(FilesPage);
+            // (as it was before the build: the launcher of a game that is there, else the choices)
+            if (updating && File.Exists(GameExe(OutPath.Text))) EnterLauncher(OutPath.Text);
+            else
+            {
+                ShowFace(Face.Files);
+                Refresh();
+            }
             return;
         }
         if (current != null && rows.TryGetValue(current, out var row)) row.Stopped();
         ShowProblem(failure ?? "The build tools stopped without saying why.", tools: failure?.Contains("antivirus", StringComparison.OrdinalIgnoreCase) == true);
-    }
-
-    void LogToggled(object sender, RoutedEventArgs e)
-    {
-        var show = ShowLog.IsChecked == true;
-        Log.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        StepCard.Visibility = show ? Visibility.Collapsed : Visibility.Visible;
-        ShowLog.Content = T(show ? S.HideDetails : S.ShowDetails);
-        if (show)
-        {
-            Log.Text = log.ToString();
-            Log.ScrollToEnd();
-        }
     }
 
     void CancelBuild(object sender, RoutedEventArgs e)
@@ -1022,41 +1082,78 @@ public partial class MainWindow : Window
 
     // ================= 3: play =================
 
+    /// The game is built: the screen is its launcher from here on (Launcher.cs), with, this once, the shortcuts and what the
+    /// build keeps on this PC between the wordmark and Play (Paper: "v3 - Game ready")
     void ShowReady()
     {
-        SetStep(2);
-        ReadyTitle.Text = updating ? "Your game is updated" : "Your game is ready";
         var compiledNote = thisCompile > 0 ? $" (compiled in {Span(TimeSpan.FromSeconds(thisCompile))})" : "";
-        ReadyNote.Text = $"{(updating ? "Updated" : "Built")} in {Span(elapsed.Elapsed)}{compiledNote}{Against(builtIn ?? elapsed.Elapsed)} · {finished}";
-        if (!updating && Environment.GetEnvironmentVariable("HOOKSHOT_UI_PREVIEW") == null)
-            Finder.Shortcuts(finished, DesktopTick.IsChecked == true, StartTick.IsChecked == true);
-        else if (updating && Environment.GetEnvironmentVariable("HOOKSHOT_UI_PREVIEW") == null)
-        {   // (the ones the player has, onto the folder's launcher; the boxes say which there are, and ticking one makes it)
-            DesktopTick.IsChecked = File.Exists(Finder.DesktopLink);
-            StartTick.IsChecked = File.Exists(Finder.StartLink);
+        readyNote = $"Your game is {(updating ? "updated" : "ready")} · {(updating ? "updated" : "built")} in {Span(elapsed.Elapsed)}";
+        readyTip = $"{(updating ? "Updated" : "Built")} in {Span(elapsed.Elapsed)}{compiledNote}{Against(builtIn ?? elapsed.Elapsed)} · {finished}";
+        // (development: a screen drawn to a file, or made up, makes and moves no shortcut of the player's)
+        var real = Shot == null && Environment.GetEnvironmentVariable("HOOKSHOT_UI_PREVIEW") == null;
+        if (!updating && real)
+            Finder.Shortcuts(finished, desktopShortcut, startShortcut);
+        else if (updating && real)
+        {   // (the ones the player has, onto the folder's launcher; the rows say which there are, and their word makes one)
+            desktopShortcut = File.Exists(Finder.DesktopLink);
+            startShortcut = File.Exists(Finder.StartLink);
             Finder.RefreshShortcuts(finished);
         }
         if (Finder.ShortcutError != null) AddLog("shortcut not made: " + Finder.ShortcutError);
-        ShowPage(ReadyPage);
+        ShowShortcuts();
+        StorageNote.Visibility = Visibility.Collapsed;
+        EnterLauncher(finished);
         _ = FreeAfterBuild();
+    }
+    string? readyNote, readyTip;
+
+    void ShowShortcuts()
+    {
+        (DesktopText.Text, DesktopWord.Content) = desktopShortcut ? ("Shortcut added", "Remove") : ("No shortcut", "Add");
+        (StartText.Text, StartWord.Content) = startShortcut ? ("Entry added", "Remove") : ("No entry", "Add");
+        DesktopText.Foreground = desktopShortcut ? Brushes.White : QuietInk;
+        StartText.Foreground = startShortcut ? Brushes.White : QuietInk;
+    }
+
+    void DesktopShortcutClick(object sender, RoutedEventArgs e)
+    {
+        desktopShortcut = !desktopShortcut;
+        ShortcutsChanged();
+    }
+
+    void StartShortcutClick(object sender, RoutedEventArgs e)
+    {
+        startShortcut = !startShortcut;
+        ShortcutsChanged();
     }
 
     // (issue: 5 GB and more left in %LOCALAPPDATA% and never said. Said here, with the way to let it go)
-    async Task ShowStorageUse()
+    async Task ShowStorageUse(string? after = null)
     {
-        StorageRow.Visibility = Visibility.Collapsed;
         var (total, freeable) = await Task.Run(Storage.Measure);
+        StorageNote.Inlines.Clear();
+        StorageNote.Visibility = total < 100L << 20 ? Visibility.Collapsed : Visibility.Visible;
         if (total < 100L << 20) return;
         // (both places when the build files are in a folder the player chose: the total counts both)
         var where = Storage.WorkChosen ? $"{Storage.Base} and {Storage.Work}" : Storage.Base;
-        StorageNote.Text = freeable >= 100L << 20
+        var can = freeable >= 100L << 20;
+        StorageNote.ToolTip = can
             ? $"Longshot Builder keeps {Storage.Gb(total)} on this PC ({where}). {Storage.Gb(freeable)} of it only makes the next " +
               "update quicker and can be freed: your game keeps playing, and the next update then takes about as long as this build."
             : $"Longshot Builder keeps {Storage.Gb(total)} on this PC ({where}): the builder itself.";
-        FreeButton.Visibility = freeable >= 100L << 20 ? Visibility.Visible : Visibility.Collapsed;
-        FreeButton.IsEnabled = true;
-        FreeButton.Content = "Free up space";
-        StorageRow.Visibility = Visibility.Visible;
+        StorageNote.Inlines.Add(can ? $"Longshot keeps {Storage.Gb(total)} on this PC so updates are quick · "
+                                    : $"Longshot keeps {Storage.Gb(total)} on this PC, the builder itself · ");
+        if (can)
+        {
+            var free = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run(freeing ? "Freeing…" : "Free up space"));
+            free.Click += FreeSpace;
+            StorageNote.Inlines.Add(free);
+            StorageNote.Inlines.Add(" · ");
+        }
+        var show = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run("Show folder"));
+        show.Click += ShowStorage;
+        StorageNote.Inlines.Add(show);
+        if (after != null) StorageNote.Inlines.Add(after);
     }
 
     // (players asked for the space back: the translated code, the setup's and updater's downloads and older builder versions go as soon
@@ -1074,20 +1171,24 @@ public partial class MainWindow : Window
 
     async void FreeSpace(object sender, RoutedEventArgs e)
     {
-        FreeButton.IsEnabled = false;
-        FreeButton.Content = "Freeing…";
-        var left = await Task.Run(() => Storage.Free());
+        if (freeing) return;
+        freeing = true;
         await ShowStorageUse();
-        if (left >= 100L << 20)
-            StorageNote.Text += $" ({Storage.Gb(left)} could not be deleted: a file is in use. Close the game and the builder, and delete the folder's contents by hand.)";
+        var left = await Task.Run(() => Storage.Free());
+        freeing = false;
+        await ShowStorageUse(left >= 100L << 20
+            ? $" ({Storage.Gb(left)} could not be deleted: a file is in use. Close the game and the builder, and delete the folder's contents by hand.)"
+            : null);
     }
 
     void ShowStorage(object sender, RoutedEventArgs e) =>
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{(Storage.WorkChosen ? Storage.Work : Storage.Base)}\"") { UseShellExecute = true });   // (the bigger one)
 
-    void ShortcutsChanged(object sender, RoutedEventArgs e)
+    void ShortcutsChanged()
     {
-        if (finished.Length > 0) Finder.Shortcuts(finished, DesktopTick.IsChecked == true, StartTick.IsChecked == true);
+        ShowShortcuts();
+        if (finished.Length > 0 && Shot == null && Environment.GetEnvironmentVariable("HOOKSHOT_UI_PREVIEW") == null)
+            Finder.Shortcuts(finished, desktopShortcut, startShortcut);
     }
 
     static string Span(TimeSpan t) => t.TotalHours >= 1 ? $"{(int)t.TotalHours} h {t.Minutes} min" : t.TotalMinutes >= 1 ? $"{(int)t.TotalMinutes} minutes" : $"{t.Seconds} seconds";
@@ -1104,9 +1205,6 @@ public partial class MainWindow : Window
         return $" · last time {Span(last)} ({how})";
     }
 
-    void OpenFolder(object sender, RoutedEventArgs e) =>
-        Process.Start(new ProcessStartInfo("explorer.exe", $"\"{finished}\"") { UseShellExecute = true });
-
     void Play(object sender, RoutedEventArgs e)
     {
         StartGame(finished);
@@ -1122,12 +1220,13 @@ public partial class MainWindow : Window
         lastFailure = why;
         problemIsTools = tools;
         ProblemSteps.Children.Clear();
-        ProblemSub.Text = updating ? "Your current game is unchanged and still plays." : "Nothing was changed in your game folder.";
+        // (the folder is swapped only once the new game is complete, make_game.py: a build that stopped left it as it was)
+        var kept = updating ? "Your current game is unchanged and still plays." : "Nothing was changed in your game folder.";
         if (tools)
         {
-            ProblemTitle.Text = "The build tools need repairing";
+            problemTitle = "The build tools need repairing";
             ProblemHead.Text = "Your antivirus removed part of the build tools";
-            ProblemText.Text = why + "\n\nAntivirus programs sometimes flag unsigned developer tools by mistake.";
+            ProblemText.Text = why + " Antivirus programs sometimes flag unsigned developer tools by mistake.";
             var base_ = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LongshotBuilder");
             foreach (var (n, s) in new[]
                      {
@@ -1135,44 +1234,72 @@ public partial class MainWindow : Window
                          (2, $"Or add {base_} to its exclusions."),
                          (3, "Then press Repair: Longshot downloads the tools again from their official releases and checks each one."),
                      })
-                ProblemSteps.Children.Add(new TextBlock { Text = $"{n}.  {s}", Style = (Style)FindResource("Note"), FontSize = 14, Margin = new Thickness(0, 6, 0, 0) });
+                ProblemSteps.Children.Add(new TextBlock { Text = $"{n}.  {s}", Style = (Style)ProblemBlock.FindResource("Small"), Margin = new Thickness(0, 4, 0, 0) });
         }
         else
         {
-            ProblemTitle.Text = updating ? "The update stopped" : "The build stopped";
+            problemTitle = updating ? "The update stopped" : "The build stopped";
             ProblemHead.Text = "What went wrong";
             ProblemText.Text = why;
         }
-        RepairButton.Visibility = tools ? Visibility.Visible : Visibility.Collapsed;
-        ProblemDetails.Content = "Show details";
-        if (!updating) SetStep(1);   // (the update keeps its versions in the head)
-        ShowPage(ProblemPage);
-    }
-
-    void ProblemShowDetails(object sender, RoutedEventArgs e)
-    {
-        var lines = log.ToString().Split('\n');
-        ProblemSteps.Children.Clear();
-        ProblemSteps.Children.Add(new TextBox
-        {
-            Text = string.Join("\n", lines.Skip(Math.Max(0, lines.Length - 80))), IsReadOnly = true, FontFamily = (FontFamily)FindResource("Mono"), FontSize = 11,
-            Foreground = (Brush)FindResource("InkSoft"), Background = new SolidColorBrush(Color.FromArgb(0x33, 0, 0, 0)), BorderThickness = new Thickness(0),
-            Padding = new Thickness(8), TextWrapping = TextWrapping.NoWrap, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-        });
+        ShowFace(Face.Problem);
+        // (Paper: "v3 - Build stopped". The button tries again, or repairs the tools; under it what stopped, in red, and why in one
+        // line, which a press turns into what the programs said. A reason longer than the line is said whole above the button)
+        var line = why.TrimEnd('.', ' ', '\n', '\r') + ".";
+        var whole = tools || line.Length + kept.Length > 96 || line.Contains('\n');
+        ProblemBlock.Visibility = whole ? Visibility.Visible : Visibility.Collapsed;
+        LauncherGoText.Text = tools ? "Repair" : "Retry";
+        LauncherGo.IsEnabled = true;
+        LauncherVersion.Content = problemTitle;
+        LauncherVersion.Foreground = BadInk;
+        LauncherStatus.Text = whole ? kept : line + " " + kept;
+        (LauncherStatus.ToolTip, LauncherStatus.IsHitTestVisible, LauncherStatus.Cursor) =
+            ("Press to see what the build tools said", true, System.Windows.Input.Cursors.Hand);
+        LauncherCopy.Content = "Copy details";
     }
 
     void CopyForReport(object sender, RoutedEventArgs e)
     {
         var lines = log.ToString().Split('\n');
         var text = $"Longshot Builder {Tools.Find()?.Version ?? "(source)"} on Windows {Environment.OSVersion.Version}\n" +
-                   $"{ProblemTitle.Text}: {lastFailure}\n\n" + string.Join("\n", lines.Skip(Math.Max(0, lines.Length - 200)));
-        try { Clipboard.SetText(text); CopyReport.Content = "Copied"; } catch (Exception) { }
+                   $"{problemTitle}: {lastFailure}\n\n" + string.Join("\n", lines.Skip(Math.Max(0, lines.Length - 200)));
+        try { Clipboard.SetText(text); LauncherCopy.Content = "Copied"; }
+        catch (Exception) { LauncherCopy.Content = "Could not copy"; }   // (the clipboard held by another program)
     }
 
+    /// (from a build that stopped: to what was there before it, the launcher of a game that is there, else the choices)
     void Back(object sender, RoutedEventArgs e)
     {
-        SetStep(0);
-        ShowPage(FilesPage);
+        if (updating && File.Exists(GameExe(OutPath.Text)))
+        {
+            updating = false;
+            EnterLauncher(OutPath.Text);
+            return;
+        }
+        updating = false;
+        ShowFace(Face.Files);
+        FillDumps();
+        Refresh();
+    }
+
+    /// (the button of a build that stopped: the tools repaired, the update begun again, or the build)
+    void RetryProblem(object sender, RoutedEventArgs e)
+    {
+        if (problemIsTools)
+        {
+            Repair(sender, e);
+            return;
+        }
+        if (updating && lastUpdate is { } u)
+        {
+            Updater.UpdateFolder(this, u.Folder, u.Tag, fetched: false, exact: u.Tag != null && !LaunchList.SameTag(u.Tag, latestTag));
+            return;
+        }
+        updating = false;
+        ShowFace(Face.Files);
+        FillDumps();
+        Refresh();
+        if (LauncherGo.IsEnabled) StartBuild(sender, e);
     }
 
     /// The setup (LongshotBuilder-Setup.exe beside this app) checks every part against its checksum and downloads the missing ones
@@ -1195,23 +1322,19 @@ public partial class MainWindow : Window
     public void BeginUpdate(string folder, string? tag)
     {
         updating = true;
+        lastUpdate = (folder, tag);
         OutPath.Text = folder;
         finished = "";
         var to = tag ?? "the latest version";
         var from = GameVersion(folder) ?? Tools.Find()?.Version;
-        StepPill.Visibility = Visibility.Collapsed;
-        VersionChip.Visibility = Visibility.Visible;
-        VersionChipText.Text = from != null && from != to ? $"{from} → {to}" : to;
         prepareNow = BuilderSettings.PrepareNow(SettingsPath);
         MakeRows(update: true, shaders: prepareNow);
-        BuildTitle.Text = "Updating your game";
-        BuildNote.Text = "Getting the update…";
-        RingBox.Visibility = Visibility.Collapsed;
-        UpdateBar.Visibility = Visibility.Visible;
+        buildTitle = "Updating your game";
+        StepsTitle.Text = from != null && from != to ? $"{from} → {to}" : $"Updating to {to}";
+        ShowFace(Face.Build);
+        LauncherStatus.Text = "Getting the update…";
         SetProgress(0);
         rows["download"].Begin();
-        CancelButton.Visibility = Visibility.Visible;
-        ShowPage(BuildPage);
     }
 
     public CancellationToken DownloadToken => (download = new CancellationTokenSource()).Token;
@@ -1233,7 +1356,7 @@ public partial class MainWindow : Window
         download = null;
         rows.GetValueOrDefault("download")?.Stopped();
         ShowProblem(why, tools: false);
-        ProblemTitle.Text = "The update could not be downloaded";
+        LauncherVersion.Content = problemTitle = "The update could not be downloaded";
     }
 
     /// The new tools are here: the folder built again with them (only what changed is compiled)
@@ -1265,131 +1388,96 @@ public partial class MainWindow : Window
     }
 }
 
-/// One step of the build: its mark (done, now, waiting), its name, a line under it and its time.
+/// One step of the build, a row of the menu as a version is (Paper: "v3 - Building"): dim until it begins, in the accent while
+/// it is the one under way (with a count at its right, "31 of 58"), then plain with the mark at its right. A line under its
+/// name says more when there is more to say.
 sealed class StepRow
 {
-    public readonly Grid Root = new() { Margin = new Thickness(0, 10, 0, 10) };
-    readonly Grid mark = new() { Width = 22, Height = 22, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 1, 0, 0) };
-    readonly Ellipse disc = new(), halo = new() { Width = 32, Height = 32, Margin = new Thickness(-5) };
-    readonly TextBlock number = new() { FontSize = 12, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-    readonly Path tick = new() { Data = Geometry.Parse("M0,4 L3.5,7.5 L10,0"), StrokeThickness = 1.8, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-    readonly TextBlock name = new() { FontWeight = FontWeights.SemiBold };
-    readonly TextBlock small = new() { FontSize = 12, Visibility = Visibility.Collapsed, TextTrimming = TextTrimming.CharacterEllipsis };
-    readonly TextBlock time = new() { FontSize = 12, Text = "—", VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 2, 0, 0) };
-    readonly Stopwatch watch = new();
-    readonly int n;
+    public readonly Grid Root = new() { MinHeight = 40, Margin = new Thickness(0, 0, 0, 4) };
+    readonly TextBlock name = Text(16, 20), count = Text(16, 20), small = Text(13, 18);
+    readonly Path tick = new()
+    {
+        Data = Geometry.Parse("M4.5,12.75 l6,6 l9,-13.5"), Width = 24, Height = 24, StrokeThickness = 1.5, Visibility = Visibility.Collapsed,
+        StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round, VerticalAlignment = VerticalAlignment.Center,
+    };
     bool running;
 
-    static Brush B(string key) => (Brush)Application.Current.FindResource(key);
-
-    public StepRow(int n, string text, bool last)
+    static readonly Brush Ink = Frozen(0xBC, 0xBC, 0xBC), Dim = Frozen(0x74, 0x74, 0x74), Now = Frozen(0xEB, 0xB0, 0x7E), Bad = Frozen(0xE2, 0x77, 0x6B);
+    static Brush Frozen(byte r, byte g, byte b) { var x = new SolidColorBrush(Color.FromRgb(r, g, b)); x.Freeze(); return x; }
+    static TextBlock Text(double size, double line) => new()
     {
-        this.n = n;
-        Root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(34) });
+        FontFamily = new FontFamily("Segoe UI"), FontSize = size, LineHeight = line, LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
+    };
+
+    public StepRow(string text)
+    {
         Root.ColumnDefinitions.Add(new ColumnDefinition());
-        Root.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        mark.Children.Add(halo);
-        mark.Children.Add(disc);
-        mark.Children.Add(number);
-        mark.Children.Add(tick);
-        tick.Stroke = B("Go");
-        time.FontFamily = (FontFamily)Application.Current.FindResource("Mono");
-        var texts = new StackPanel { Children = { name, small } };
-        Grid.SetColumn(texts, 1);
-        Grid.SetColumn(time, 2);
-        if (!last)
-        {
-            var link = new Rectangle { Width = 1, Fill = B("GlassLine"), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(10.5, 28, 0, -19) };
-            Root.Children.Add(link);
-        }
-        Root.Children.Add(mark);
-        Root.Children.Add(texts);
-        Root.Children.Add(time);
+        Root.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MinWidth = 24 });
+        Root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(40) });
+        Root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         name.Text = text;
-        Wait();
+        name.TextTrimming = TextTrimming.CharacterEllipsis;
+        name.VerticalAlignment = count.VerticalAlignment = VerticalAlignment.Center;
+        name.Margin = new Thickness(0, 0, 8, 0);
+        count.Visibility = small.Visibility = Visibility.Collapsed;
+        small.TextWrapping = TextWrapping.Wrap;
+        small.Margin = new Thickness(0, -6, 0, 6);
+        Grid.SetColumn(count, 1);
+        Grid.SetColumn(tick, 1);
+        Grid.SetRow(small, 1);
+        Grid.SetColumnSpan(small, 2);
+        foreach (var part in new UIElement[] { name, count, tick, small }) Root.Children.Add(part);
+        Ink_(Dim);
     }
 
+    void Ink_(Brush ink) => name.Foreground = count.Foreground = small.Foreground = tick.Stroke = ink;
+
+    /// (in words, for a check that reads no picture: "Compile: now 31 of 58")
+    public string Says => $"{name.Text}: {(tick.Stroke == Now ? "now" : tick.Stroke == Bad ? "stopped" : tick.Visibility == Visibility.Visible ? "done" : "to come")}" +
+                          (count.Visibility == Visibility.Visible ? " " + count.Text : "");
+
+    /// (a line under the step's name)
     public void Small(string text)
     {
         small.Text = text;
         small.Visibility = Visibility.Visible;
     }
 
-    void Wait()
+    /// (at the row's right while the step is under way: how many of how many)
+    public void Count(string text)
     {
-        disc.Fill = Brushes.Transparent;
-        disc.Stroke = B("GlassLineStrong");
-        disc.StrokeThickness = 1.5;
-        halo.Fill = Brushes.Transparent;
-        number.Text = "";
-        tick.Visibility = Visibility.Collapsed;
-        name.Foreground = B("InkFaint");
-        name.FontWeight = FontWeights.Medium;
-        small.Foreground = B("InkFaint");
-        time.Foreground = B("InkFaint");
+        count.Text = text;
+        count.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
     }
 
     public void Begin()
     {
         running = true;
-        watch.Restart();
-        disc.Fill = B("Brand");
-        disc.Stroke = null;
-        halo.Fill = B("BrandSoft");
-        number.Text = n.ToString();
-        number.Foreground = Brushes.White;
         tick.Visibility = Visibility.Collapsed;
-        name.Foreground = B("Ink");
-        name.FontWeight = FontWeights.SemiBold;
-        time.Foreground = B("Ink");
-        Tick();
-    }
-
-    public void Tick()
-    {
-        if (running) time.Text = $"{(int)watch.Elapsed.TotalMinutes}:{watch.Elapsed.Seconds:00}";
+        count.Visibility = count.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        Ink_(Now);
     }
 
     public void Done()
     {
-        if (running) Tick();
         running = false;
-        watch.Stop();
-        disc.Fill = B("GoSoft");
-        disc.Stroke = null;
-        halo.Fill = Brushes.Transparent;
-        number.Text = "";
+        count.Visibility = Visibility.Collapsed;
         tick.Visibility = Visibility.Visible;
-        name.Foreground = B("Ink");
-        name.FontWeight = FontWeights.SemiBold;
-        time.Foreground = B("InkFaint");
+        Ink_(Ink);
     }
 
     /// (not done: left to later, the shaders' step when they were not prepared now)
     public void Skipped()
     {
-        if (running) Tick();
         running = false;
-        watch.Stop();
-        disc.Fill = Brushes.Transparent;
-        disc.Stroke = B("GlassLineStrong");
-        disc.StrokeThickness = 1.5;
-        halo.Fill = Brushes.Transparent;
-        number.Text = "–";
-        number.Foreground = B("InkFaint");
-        tick.Visibility = Visibility.Collapsed;
-        name.Foreground = B("InkFaint");
-        name.FontWeight = FontWeights.Medium;
-        time.Foreground = B("InkFaint");
+        count.Visibility = tick.Visibility = Visibility.Collapsed;
+        Ink_(Dim);
     }
 
     public void Stopped()
     {
         running = false;
-        watch.Stop();
-        disc.Fill = B("BadSoft");
-        halo.Fill = Brushes.Transparent;
-        number.Text = "!";
-        number.Foreground = B("Bad");
+        tick.Visibility = Visibility.Collapsed;
+        Ink_(Bad);
     }
 }
