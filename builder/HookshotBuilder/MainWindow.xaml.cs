@@ -218,8 +218,9 @@ public partial class MainWindow : Window
     // ---- the launcher: Hookshot Launcher.exe in a game folder starts this with --launch <folder> (builder/setup/setup.c) ----
     string launchFolder = "";
 
-    /// (opened with nothing asked: the builder is the launcher of the game it built last, when that game is still there. Anything
-    /// asked of it (--update, --build, a development switch) opens its own pages as before)
+    /// (opened with nothing asked: the builder is the launcher of the game it built last, when that game is still there; else of
+    /// a game whose own launcher was played from on this PC (launcher.json: one built from the command line, or by a builder
+    /// installed before). Anything asked of it (--update, --build, a development switch) opens its own pages as before)
     static string? HomeGame()
     {
         if (Environment.GetCommandLineArgs().Length > 1) return null;
@@ -229,7 +230,9 @@ public partial class MainWindow : Window
         try { folder = System.Text.Json.JsonSerializer.Deserialize<BuilderSettings>(File.ReadAllText(SettingsPath))?.Out; } catch (Exception) { }
         if (string.IsNullOrWhiteSpace(folder))
             folder = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Games", "Longshot");
-        return File.Exists(GameExe(folder)) ? folder.TrimEnd('\\', '/') : null;
+        foreach (var known in new[] { folder }.Concat(Choices().Keys))
+            if (File.Exists(GameExe(known))) return known.TrimEnd('\\', '/');
+        return null;
     }
 
     static string? LaunchArg()

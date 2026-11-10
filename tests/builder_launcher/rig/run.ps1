@@ -142,6 +142,10 @@ try {
         Set-Content "$Out\base\builder-settings.json" ('{"Out":' + (ConvertTo-Json "$Out\game") + '}') -Encoding ascii
         $drawn = Press "home" "v2.2.0,v2.1.0" "" "" -Bare
         Check $drawn "it opened as the launcher (drawn to a file, which only the launcher does)"
+        "--- and with no game it built: the launcher of a game whose own launcher was played from (launcher.json)"
+        Remove-Item "$Out\base\builder-settings.json"
+        $drawn = Press "home-known" "v2.2.0,v2.1.0" "" "" -Bare
+        Check $drawn "it opened as the launcher"
         "--- Build from game files: the builder's own pages, in the launcher's window"
         $drawn = Press "pages" "v2.2.0,v2.1.0" "pages" ""
         Check $drawn "drawn"
