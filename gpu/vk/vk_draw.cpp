@@ -674,11 +674,7 @@ std::string pcache_path;
 std::atomic<int64_t> pcache_built_since_save{0};
 void pcache_init() {
     if (pcache) return;
-    char exe[MAX_PATH];
-    const DWORD n = game_module_path(exe, MAX_PATH);
-    std::string dir(exe, n);
-    dir = dir.substr(0, dir.find_last_of("\\/") + 1);
-    pcache_path = dir + "mkw_vk_pipelines.bin";
+    pcache_path = cache_path("mkw_vk_pipelines.bin");   // (the game folder, or RX_VK_CACHE_DIR: vk_paths.h)
     std::vector<uint8_t> data;
     if (FILE* f = fopen(pcache_path.c_str(), "rb")) {
         _fseeki64(f, 0, SEEK_END);
@@ -884,12 +880,7 @@ uint64_t program_wm_sig(const Program& p) {
 std::mutex note_mu;
 FILE* note_file = nullptr;
 std::unordered_set<uint64_t> noted;   // (a pipeline once in the file, however many runs meet it)
-std::string pipe_notes_path() {
-    char exe[MAX_PATH];
-    const DWORD n = game_module_path(exe, MAX_PATH);
-    std::string dir(exe, n);
-    return dir.substr(0, dir.find_last_of("\\/") + 1) + "hookshot_pipelines.bin";
-}
+std::string pipe_notes_path() { return cache_path("hookshot_pipelines.bin"); }
 /// The notes of this build (hookshot_pipelines.bin), each pipeline once
 std::vector<std::unique_ptr<PipeNote>> pipe_notes_read() {
     std::vector<std::unique_ptr<PipeNote>> notes;
@@ -921,7 +912,7 @@ void state_record(const Program& p, const NvnState& s, const Targets& at, VkPrim
 uint64_t pipeline_key(const Program& p, const NvnState& s, const Targets& at, VkPrimitiveTopology topo);
 void pipeline_note(uint64_t key, const Program& p, const NvnState& s, const Targets& at, VkPrimitiveTopology topo,
                    const uint8_t* color_types = nullptr) {
-    static const bool off = getenv("RX_VK_NO_PROGRAM_CACHE") != nullptr;
+    static const bool off = getenv("RX_VK_NO_PROGRAM_CACHE") != nullptr || cache_readonly();
     if (off) return;
     if (color_types) state_record(p, s, at, topo, color_types);
     auto rec = std::make_unique<PipeNote>();
@@ -1017,7 +1008,7 @@ std::mutex state_mu;
 FILE* state_file = nullptr;
 std::unordered_set<uint64_t> state_seen;
 void state_record(const Program& p, const NvnState& s, const Targets& at, VkPrimitiveTopology topo, const uint8_t color_types[8]) {
-    static const bool off = getenv("RX_VK_NO_STATE_LIST") != nullptr;
+    static const bool off = getenv("RX_VK_NO_STATE_LIST") != nullptr || cache_readonly();
     if (off) return;
     StateRec r{};
     std::memcpy(r.code, p.codes, sizeof r.code);   // (kept with the program: the stages' lock is not taken on the draw's path)
@@ -1042,7 +1033,7 @@ void state_record(const Program& p, const NvnState& s, const Targets& at, VkPrim
     const uint64_t h = state_hash(r);
     std::lock_guard lk(state_mu);
     if (!state_file) {
-        const std::string path = state_list_path("hookshot_pipeline_states.bin");
+        const std::string path = cache_path("hookshot_pipeline_states.bin");
         const std::vector<StateRec> had = state_list_read(path);
         for (const StateRec& o : had) state_seen.insert(state_hash(o));
         FILE* probe = fopen(path.c_str(), "rb");
@@ -1063,7 +1054,7 @@ void state_list_prepare(void (*progress)(size_t done, size_t total)) {
     const auto t0 = std::chrono::steady_clock::now();
     std::vector<StateRec> recs = state_list_read(state_list_path("hookshot_pipeline_states_shipped.bin"));
     const size_t shipped = recs.size();
-    for (const StateRec& r : state_list_read(state_list_path("hookshot_pipeline_states.bin"))) recs.push_back(r);
+    for (const StateRec& r : state_list_read(cache_path("hookshot_pipeline_states.bin"))) recs.push_back(r);
     if (recs.empty()) return;
     // the programs: each once (by its stages and the types it was translated for)
     struct Want { const StateRec* r; uint64_t key = 0; };
@@ -6158,12 +6149,7 @@ std::atomic<bool> prepare_halt{false};
 }
 void prepare_stop() { prepare_halt.store(true); }
 bool prepare_stopped() { return prepare_halt.load(std::memory_order_relaxed); }
-std::string prepared_path() {
-    char exe[MAX_PATH];
-    const DWORD exe_n = game_module_path(exe, MAX_PATH);
-    std::string path(exe, exe_n);
-    return path.substr(0, path.find_last_of("\\/") + 1) + "hookshot_prepared.bin";
-}
+std::string prepared_path() { return cache_path("hookshot_prepared.bin"); }   // (the game folder, or RX_VK_CACHE_DIR: vk_paths.h)
 /// (hookshot) An update: every shader was prepared once here, for another translator. Each release changes the translator, and every
 /// update then held the game's start for the whole seed again (116k variants, minutes on most PCs: "shaders need to be prepared every
 /// update"). With RX_VK_PREPARE_BACKGROUND=1 only what the notes name is built before the game (precompile_run), the rest in play
@@ -6185,6 +6171,7 @@ bool prepare_is_update() {
 bool prepare_run(void (*progress)(size_t done, size_t total), bool background) {
     const auto t0 = std::chrono::steady_clock::now();
     const std::string path = prepared_path();
+    const bool ro = cache_readonly();   // (RX_VK_CACHE_READONLY: the work is done, its file and marker are not written)
     const uint64_t stamp = program_cache_stamp();
     if (FILE* f = fopen(path.c_str(), "rb")) {
         uint64_t have = 0;
@@ -6210,7 +6197,7 @@ bool prepare_run(void (*progress)(size_t done, size_t total), bool background) {
         fclose(f);
         warm = warm_cs = false;
         logf("vk: the last start did not finish the driver's part of the shaders: left out");
-    } else if (warm || warm_cs) {
+    } else if ((warm || warm_cs) && !ro) {
         if (FILE* w = fopen(warming.c_str(), "wb")) fclose(w);
     }
     auto blank = std::make_unique<NvnState>();
@@ -6306,7 +6293,7 @@ bool prepare_run(void (*progress)(size_t done, size_t total), bool background) {
     if (prepare_stopped()) {   // (closed: what was made is in the program cache already, the rest is made at the next start)
         logf("vk: shader preparation stopped at %zu of %zu (the window was closed): the next start goes on from there", done.load(),
              total);
-        remove(warming.c_str());
+        if (!ro) remove(warming.c_str());
         return false;
     }
     int64_t translated = 0, failed = 0;
@@ -6314,6 +6301,7 @@ bool prepare_run(void (*progress)(size_t done, size_t total), bool background) {
     logf("vk: prepared %zu shader programs%s (%zu new, %lld failed, %zu stage libraries; %zu compute variants, %zu programs with "
          "texture variants, %zu at the limit) in %.1f s", programs, background ? " in play" : "", made.load(), (long long)failed, libs.load(), variants.load(),
          asking.load(), capped.load(), std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
+    if (ro) return true;
     if (!background) remove(warming.c_str());
     if (FILE* f = fopen(path.c_str(), "wb")) fwrite(&stamp, 8, 1, f), fclose(f);
     return true;
@@ -6341,8 +6329,9 @@ void precompile_run(void (*progress)(size_t done, size_t total)) {
     // (two starts in a row, not one: closing the window while it ran counted as a crash, and the next start then skipped the
     // precompile and compiled everything in play: "stuck at 99%, then fine on the second start", 2026-11-08)
     const std::string running = pipe_notes_path() + ".running";
+    const bool ro = cache_readonly();   // (RX_VK_CACHE_READONLY: no marker kept, the notes never dropped)
     int ended_inside = 0;
-    if (FILE* f = fopen(running.c_str(), "rb")) {
+    if (FILE* f = ro ? nullptr : fopen(running.c_str(), "rb")) {
         if (fscanf(f, "%d", &ended_inside) != 1) ended_inside = 1;
         fclose(f);
         if (ended_inside >= 2) {
@@ -6353,8 +6342,12 @@ void precompile_run(void (*progress)(size_t done, size_t total)) {
         }
         logf("vk: the last start did not get through the precompile (closed, or it crashed there): trying it once more");
     }
-    if (FILE* f = fopen(running.c_str(), "wb")) fprintf(f, "%d\n", ended_inside + 1), fclose(f);
-    struct Done { const std::string& path; ~Done() { remove(path.c_str()); } } done_marker{running};
+    if (FILE* f = ro ? nullptr : fopen(running.c_str(), "wb")) fprintf(f, "%d\n", ended_inside + 1), fclose(f);
+    struct Done {
+        const std::string& path;
+        bool on;
+        ~Done() { if (on) remove(path.c_str()); }
+    } done_marker{running, !ro};
     pcache_init();
     std::vector<std::unique_ptr<PipeNote>> notes = pipe_notes_read();
     std::unordered_set<uint64_t> wanted;
@@ -6995,7 +6988,7 @@ int64_t draw_desc_reused() {
 }
 
 void pipeline_cache_save(bool force) {
-    if (!pcache || (!force && pcache_built_since_save < 32)) return;
+    if (!pcache || (!force && pcache_built_since_save < 32) || cache_readonly()) return;
     pcache_built_since_save = 0;
     // (on a thread of its own unless forced, at exit: ~100 MB fetched and written took the replay thread 100+ ms at
     // each scene change; the cache is internally synchronized, pipelines go on being built meanwhile)

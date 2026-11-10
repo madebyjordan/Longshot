@@ -1037,10 +1037,8 @@ void disk_init() {
     static std::once_flag once;
     std::call_once(once, [] {
         if (getenv("RX_VK_NO_PROGRAM_CACHE")) return;
-        char exe[MAX_PATH];
-        const DWORD n = game_module_path(exe, MAX_PATH);
-        std::string path(exe, n);
-        path = path.substr(0, path.find_last_of("\\/") + 1) + "hookshot_programs.bin";
+        const std::string path = cache_path("hookshot_programs.bin");   // (the game folder, or RX_VK_CACHE_DIR: vk_paths.h)
+        const bool ro = cache_readonly();
         // (one Hookshot at a time on a cache: a second one, started while the first wrote, took the record being written for one
         // cut short and cut the file there, under the first, whose list of records then named bytes written over since. Held
         // until the process ends)
@@ -1148,7 +1146,9 @@ void disk_init() {
             }
             fclose(f);
         }
-        if (good) {
+        if (ro) {
+            // (RX_VK_CACHE_READONLY: what it holds is read, up to a record cut short; nothing is added, cut or started again)
+        } else if (good) {
             if (good != whole) {   // (a record cut short: without it)
                 if (FILE* f = fopen(path.c_str(), "r+b")) _chsize_s(_fileno(f), good), fclose(f);
             }
@@ -1167,10 +1167,11 @@ void disk_init() {
             if (idx_whole) disk_idx = fopen(idx_path.c_str(), "ab");
             else idx_write(idx_path, stamp, order);
         }
-        disk_in = disk_out ? fopen(path.c_str(), "rb") : nullptr;
+        disk_in = disk_out || (ro && good) ? fopen(path.c_str(), "rb") : nullptr;
         disk_path = path;
-        disk_on = disk_out != nullptr && disk_in != nullptr;
-        logf("vk: program cache %s: %zu program keys kept, %lld KB", path.c_str(), disk_records.size(), (long long)(good >> 10));
+        disk_on = disk_in != nullptr && (disk_out != nullptr || ro);
+        logf("vk: program cache %s: %zu program keys kept, %lld KB%s", path.c_str(), disk_records.size(), (long long)(good >> 10),
+             ro ? " (read-only)" : "");
     });
 }
 
@@ -1290,7 +1291,7 @@ void get_info(Reader& r, Shader::Info& i) {
 
 void program_cache_save(const Program& p, const std::vector<std::vector<uint32_t>>& spirv) {
     disk_init();
-    if (!disk_on || spirv.size() != p.stages.size()) return;
+    if (!disk_on || !disk_out || spirv.size() != p.stages.size()) return;   // (no disk_out: read-only)
     std::vector<uint8_t> o;
     o.reserve(256 << 10);
     put_head(o, p);

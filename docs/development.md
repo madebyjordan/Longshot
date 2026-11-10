@@ -31,12 +31,40 @@ Run everything with `python -I` from this folder.
 | `python -I nx2/test_leaf.py [--count 3000 --states 4] [--calls]` | random whole functions (or call trees), Unicorn vs recompiled native code on the real image |
 | `python -I nx2/lift.py --standalone --write` then `python -I nx2/build.py --standalone --jobs 4` | the standalone game: `work/sa/build/hookshot.exe` + `hookshot_vk.dll` |
 | `powershell -File scripts/run-vk.ps1 [-Window] [-Seconds 120] [-Name x]` | a muted test run on Vulkan, with screenshots in `work/runs/<name>/shots` |
+| `powershell -File scripts/test-run.ps1 -Game <game folder> [-Renderer <dll>] [-Cache cold\|game\|<folder>]` | a test run on the game folder you play, without copying it or changing it (see below) |
+| `powershell -File scripts/build-vk.ps1` | the renderer alone, in `%LOCALAPPDATA%\LongshotDev` (see below) |
 | `python -I scripts/prof.py <stacks file>` | a profile sampled with `HOS_SAMPLE=<thread>` + `HOS_SAMPLE_FILE=<stacks file>`, named from the linker maps |
 
 The dump can also come from `OOT_DUMP` (its folder) or `OOT_EXEFS`; `OOT_WORK` moves the work folder.
 
 The built game's own arguments (`image.bin`, `--romfs`, `--user`, `--trace`, `--prepare-shaders`) are in the README's
 [Running the game from the command line](../readme.md#running-the-game-from-the-command-line).
+
+### Test runs without another game folder
+
+A new game folder costs 24 GB (the romfs, unless hard-linked) and a played one another 7 GB of caches; none is needed to
+test a build. `scripts/test-run.ps1` makes a run folder beside the game folder out of hard links (the exe, `image.bin`,
+the shader list), copies in the renderer under test (`-Renderer`, 6 MB) and the saves (1 MB), passes the game's romfs with
+`--romfs`, and deletes the run folder afterwards. The game folder is not written. The log, a summary and any screenshots
+stay in `runs\<time>-<name>`.
+
+- `-Cache cold` (the default): a first start, caches empty in the run folder.
+- `-Cache game`: the game's own caches, read-only (`RX_VK_CACHE_DIR` + `RX_VK_CACHE_READONLY`). A warm start that cannot
+  change them, and a test build whose translator stamp differs cannot start the 6.7 GB program cache again. Renderers
+  from before these switches start cold instead.
+- `-Cache <folder>`: a warm cache of its own, read and written, kept for the next run.
+
+For renderer work, build only the DLL and run it. `scripts/build-vk.ps1` builds it with the builder's compiler and
+packages in a work folder of its own (`%LOCALAPPDATA%\LongshotDev`). Not in the builder's: a checkout's build there made
+the builder's next build throw away every compiled object.
+
+```powershell
+powershell -File scripts/build-vk.ps1
+powershell -File scripts/test-run.ps1 -Game <game folder> -Renderer "$env:LOCALAPPDATA\LongshotDev\sa\build\hookshot_vk.dll" -Cache game
+```
+
+Switches for one experiment go in with `-Env "NAME=1"` instead of a build of their own. A fully cold first start (AMD's
+driver cache moved aside too) is still `bench\bench_prepare.ps1`'s.
 
 Scripted test input (`HOS_INPUT_SCRIPT` and `HOS_INPUT_LIVE`) is applied before the window-focus check. A log saying
 the game window is not in front does not mean those presses were discarded. `HOS_HEADLESS` and
