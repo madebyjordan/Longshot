@@ -958,6 +958,7 @@ void state_record(const Program& p, const NvnState& s, const Targets& at, VkPrim
     }
     if (state_file && state_seen.insert(h).second) fwrite(&r, sizeof r, 1, state_file), fflush(state_file);
 }
+static size_t state_list_noted = 0;   // (this start's state list pipelines, noted: predict_run leaves its guesses out then)
 /// (prepare_run, the seed open) every pipeline of the state lists (the player's own and the shipped one): its program translated
 /// when the program cache lacks it, then noted in hookshot_pipelines.bin for precompile_run to build. RX_VK_NO_STATE_LIST=1: off
 void state_list_prepare(void (*progress)(size_t done, size_t total)) {
@@ -1075,6 +1076,7 @@ void state_list_prepare(void (*progress)(size_t done, size_t total)) {
         pipeline_note(pipeline_key(*p, *s, at, (VkPrimitiveTopology)r.topo), *p, *s, at, (VkPrimitiveTopology)r.topo);
         noted_n++;
     }
+    state_list_noted = noted_n;
     logf("vk: state list: %zu pipelines (%zu shipped), %zu programs (%zu translated now, %zu with stages not in the seed), %zu variants "
          "by their textures (%zu made), %zu noted, %zu whose program variant was not made, in %.1f s", recs.size(), shipped,
          want.size(), made.load(), missing.load(), variant_of.size(), variants_made.load(), noted_n, no_variant,
@@ -5926,6 +5928,13 @@ void predict_run(void (*progress)(size_t done, size_t total)) {
     const auto t0 = std::chrono::steady_clock::now();
     const std::vector<std::unique_ptr<PipeNote>> notes = pipe_notes_read();
     if (notes.empty() || getenv("RX_VK_NO_PREDICT")) return;
+    // (longshot) a state list's pipelines are the ones play made; the predictions are guesses for every other program. From the
+    // 2648 of a shipped list it guessed 26838, about 90 minutes more on an RX 6700 XT, so a start with a list builds the list
+    // only. RX_VK_PREDICT=1: both
+    if (state_list_noted && !getenv("RX_VK_PREDICT")) {
+        logf("vk: predict: left out, the state list's %zu pipelines are built instead (RX_VK_PREDICT=1: both)", state_list_noted);
+        return;
+    }
     size_t programs = 0;
     const std::vector<std::unique_ptr<PipeNote>> predicted = predict_pipelines(notes, &programs);
     std::unordered_map<uint64_t, std::vector<const PipeNote*>> by_program;
