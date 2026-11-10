@@ -42,8 +42,11 @@ constexpr int VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO=11;
 constexpr int VK_SHADER_STAGE_COMPUTE_BIT=12;
 struct VkComputePipelineCreateInfo {
  int sType; struct {int sType=0,stage=0;uintptr_t module=0;const char*pName=nullptr;} stage;
- uintptr_t layout=0;
+ uintptr_t layout=0; unsigned flags=0;
 };
+// (longshot) the arm leaves the driver's optimizer out with AMD's driver (vk_draw.cpp pipelines_noopt): not here
+constexpr unsigned VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT=1;
+static bool pipelines_noopt(){return false;}
 struct {uintptr_t device=0x1234;}dev;
 VkPipelineCache pcache=0x5678;
 struct Program {struct Stage{uintptr_t module;};std::vector<Stage>stages{{0x2468}};unsigned workgroup[3]{32,1,1};uintptr_t layout=0x1357;VkPipeline compute_pipeline=0xbeef;};
