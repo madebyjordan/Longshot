@@ -7,9 +7,11 @@
 #   powershell -File scripts/test-run.ps1 -Game <game folder> [-Renderer <hookshot_vk.dll>] [-Exe <hookshot.exe>] [-Name x]
 #       [-Cache cold|game|<folder>] [-Env "A=1","B=2"] [-NoGameEnv] [-Buttons "0:LUP/2000,2:A"] [-FrameClock]
 #       [-Seconds 120] [-Headless] [-Mute] [-ShotEvery 300] [-Prepare] [-Keep] [-Runs <folder>] [-MaxGB 12] [-Force] [-DryRun]
+#       [-User <saves folder>] [-Options <hookshot_options.ini>] [-SampleAll] [-SampleFrom 60]
 #
 # -Game          the game folder (default: LONGSHOT_GAME). The run folder goes beside it (<game>\..\runs) unless -Runs: it
-#                must be on the same drive, for the hard links.
+#                must be on the same drive, for the hard links. A builder's folder keeps hookshot.exe in bin\, a folder made
+#                by make_game.py from a checkout (build-game.ps1 -Channel dev) beside image.bin: both are taken.
 # -Renderer/-Exe the hookshot_vk.dll / hookshot.exe to test (a build's, or one kept in renderers\); the game's without them.
 # -Cache cold    (default) caches start empty in the run folder: a first start. AMD's own driver cache stays warm; for a
 #                fully cold first start use bench\bench_prepare.ps1.
@@ -21,6 +23,11 @@
 #        <folder> a cache folder of its own, read and written (made if missing): a warm cache for one line of work that is
 #                not the game's. Kept after the run.
 # -Env           extra NAME=VALUE switches, added to the game's hookshot_env.txt (copied; -NoGameEnv leaves it out).
+# -User          the saves the run starts from (a user folder, copied) in place of the game's: the same save every run.
+# -Options       the settings the run starts from (a hookshot_options.ini, copied) in place of the game's.
+# -SampleAll     every game and renderer thread's stack every 2 ms (HOS_SAMPLE_ALL) into <runs>\<name>\stacks_all.txt, from
+#                -SampleFrom seconds in (default 60: past the start and the load) to the end; scripts/crit.py, vkprof.py
+#                and hotlist.py read it (RX_MAPS=<the build's folder> names the functions).
 # -Buttons       scripted input (HOS_INPUT_SCRIPT); -FrameClock times it by frames (HOS_INPUT_FRAME_CLOCK=1).
 # -Seconds       stop the game after this long (0, the default: wait until it is closed).
 # -Headless      no window (HOS_HEADLESS); otherwise the window opens without taking focus. Muted when headless or
@@ -34,14 +41,24 @@
 param([string]$Game = $env:LONGSHOT_GAME, [string]$Renderer = "", [string]$Exe = "", [string]$Name = "run",
       [string]$Cache = "cold", [string[]]$Env = @(), [switch]$NoGameEnv, [string]$Buttons = "", [switch]$FrameClock,
       [int]$Seconds = 0, [switch]$Headless, [switch]$Mute, [int]$ShotEvery = 0, [switch]$Prepare, [switch]$Keep,
-      [string]$Runs = "", [int]$MaxGB = 12, [switch]$Force, [switch]$DryRun)
+      [string]$Runs = "", [int]$MaxGB = 12, [switch]$Force, [switch]$DryRun, [string]$User = "", [string]$Options = "",
+      [switch]$SampleAll, [int]$SampleFrom = 60)
 $ErrorActionPreference = "Stop"
+
+# (powershell -File hands -Env "A=1","B=2" over as the one string "A=1,B=2", and the game then read a switch named A with
+# the rest as its value: split where a comma is followed by a NAME=, which a value's own commas are not)
+$Env = @($Env | ForEach-Object { $_ -split ',(?=[A-Za-z_][A-Za-z0-9_]*=)' } | Where-Object { $_ })
 
 if (-not $Game) { throw "No game folder: pass -Game <folder> or set LONGSHOT_GAME." }
 $Game = (Resolve-Path $Game).Path.TrimEnd('\')
-foreach ($need in "bin\hookshot.exe", "image.bin", "romfs") {
+foreach ($need in "image.bin", "romfs") {
     if (-not (Test-Path (Join-Path $Game $need))) { throw "$Game is not a game folder (no $need)." }
 }
+# (the builder's folder has bin\hookshot.exe; a checkout's build, game-dev, has hookshot.exe and its DLLs beside image.bin)
+$flat = -not (Test-Path "$Game\bin\hookshot.exe")
+if ($flat -and -not (Test-Path "$Game\hookshot.exe")) { throw "$Game is not a game folder (no hookshot.exe in it or in its bin)." }
+if ($User -and -not (Test-Path $User -PathType Container)) { throw "-User ${User}: no such folder." }
+if ($Options -and -not (Test-Path $Options -PathType Leaf)) { throw "-Options ${Options}: no such file." }
 if (-not $Force -and -not $DryRun -and (Get-Process hookshot -ErrorAction SilentlyContinue)) {
     throw "A game is running (hookshot.exe): one at a time. Close it, or pass -Force."
 }
@@ -55,7 +72,9 @@ if ((Split-Path -Qualifier $run) -ne (Split-Path -Qualifier $Game)) { throw "-Ru
 function Link($from, $to) { New-Item -ItemType HardLink -Path $to -Target $from | Out-Null }
 
 # ---- the run folder: hard links to what the game only reads, copies of what it may write ----
-foreach ($f in Get-ChildItem "$Game\bin" -File) { Link $f.FullName "$run\bin\$($f.Name)" }
+# (the run folder has a bin\ either way: the game finds image.bin and its settings one folder up from there)
+$programs = if ($flat) { Get-ChildItem $Game -File | Where-Object { $_.Extension -in ".exe", ".dll" } } else { Get-ChildItem "$Game\bin" -File }
+foreach ($f in $programs) { Link $f.FullName "$run\bin\$($f.Name)" }
 if ($Renderer) {
     Remove-Item "$run\bin\hookshot_vk.dll" -Force -ErrorAction SilentlyContinue
     Copy-Item (Resolve-Path $Renderer).Path "$run\bin\hookshot_vk.dll"   # (a copy: a later build cannot change it mid-run)
@@ -72,8 +91,10 @@ foreach ($n in "image.bin", "hookshot_shaders.bin", "hookshot_pipeline_states_sh
 foreach ($n in "language.txt", "hookshot_options.ini", "hookshot_version.txt") {
     if (Test-Path "$Game\$n") { Copy-Item "$Game\$n" "$run\$n" }
 }
+if ($Options) { Copy-Item (Resolve-Path $Options).Path "$run\hookshot_options.ini" -Force }
 if (Test-Path "$Game\hookshot_prepare_skipped") { Copy-Item "$Game\hookshot_prepare_skipped" $run }
-if (Test-Path "$Game\user") { Copy-Item "$Game\user" "$run\user" -Recurse } else { New-Item -ItemType Directory "$run\user" | Out-Null }
+$userFrom = if ($User) { (Resolve-Path $User).Path } else { "$Game\user" }
+if (Test-Path $userFrom) { Copy-Item $userFrom "$run\user" -Recurse } else { New-Item -ItemType Directory "$run\user" | Out-Null }
 
 $lines = @("HOOKSHOT_NO_UPDATE_CHECK=1")
 if (-not $NoGameEnv -and (Test-Path "$Game\hookshot_env.txt")) { $lines += Get-Content "$Game\hookshot_env.txt" }
@@ -101,7 +122,10 @@ if ($Cache -eq "game") {
 
 # ---- the run ----
 foreach ($n in "HOS_HEADLESS", "HOS_WINDOW_NOACTIVATE", "HOS_AUDIO", "HOS_INPUT_SCRIPT", "HOS_INPUT_FRAME_CLOCK",
-               "RX_VK_SHOTS", "RX_VK_SHOT_EVERY", "HOS_ENV_FILE") { Remove-Item "Env:$n" -ErrorAction SilentlyContinue }
+               "RX_VK_SHOTS", "RX_VK_SHOT_EVERY", "HOS_ENV_FILE", "HOS_SAMPLE_ALL") { Remove-Item "Env:$n" -ErrorAction SilentlyContinue }
+# (the sampler writes while <file>.go exists: the loop below makes it at -SampleFrom, and takes it away before the game stops)
+$stacks = "$out\stacks_all.txt"
+if ($SampleAll) { $env:HOS_SAMPLE_ALL = $stacks }
 if ($Headless) { $env:HOS_HEADLESS = "1" } else { $env:HOS_WINDOW_NOACTIVATE = "1" }
 if ($Headless -or $Buttons -or $Mute) { $env:HOS_AUDIO = "0" }
 if ($Buttons) { $env:HOS_INPUT_SCRIPT = $Buttons }
@@ -134,6 +158,13 @@ while ($true) {
     if ($mb -gt $peak) { $peak = $mb }
     if ($mb -gt $MaxGB * 1024) { "memory guard: $mb MB, stopped"; break }
     if ($Seconds -gt 0 -and ((Get-Date) - $t0).TotalSeconds -ge $Seconds) { break }
+    if ($SampleAll -and -not (Test-Path "$stacks.go") -and ((Get-Date) - $t0).TotalSeconds -ge $SampleFrom) {
+        Set-Content "$stacks.go" "" -Encoding ascii
+    }
+}
+if (Test-Path "$stacks.go") {   # (the sampler looks every 200 ms: it closes its file before the game goes)
+    Remove-Item "$stacks.go" -Force
+    if (-not $exited) { Start-Sleep -Milliseconds 600 }
 }
 if (-not $exited) {
     # (closed as a player closes it first: a stop mid-prepare otherwise leaves the cache's "did not finish" marker, and the next
@@ -149,6 +180,9 @@ $secs = [int]((Get-Date) - $t0).TotalSeconds
 $how = if ($DryRun) { "dry run" } elseif ($exited) { "exited with $($p.ExitCode)" } else { "stopped" }
 $sum = @("run '$Name': $secs s, $how, peak working set $peak MB",
          "renderer: $(if ($Renderer) { $Renderer } else { "the game's" })", "caches: $cacheNote")
+if ($User) { $sum += "saves: $userFrom" }
+if ($Options) { $sum += "settings: $((Resolve-Path $Options).Path)" }
+if ($SampleAll -and (Test-Path $stacks)) { $sum += "stacks: $stacks ($([int]((Get-Item $stacks).Length / 1MB)) MB, from $SampleFrom s)" }
 if (Test-Path "$out\log.txt") {
     $sum += Select-String -Path "$out\log.txt" -Pattern 'vk: program cache |vk: pipeline cache |vk: prepared |vk: predicted |vk: precompile: |vk: state list: |fps|crash|fault|exception|assert' |
         Select-Object -First 40 | ForEach-Object { $_.Line }

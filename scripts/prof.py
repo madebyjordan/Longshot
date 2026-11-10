@@ -6,10 +6,25 @@ module+offset frames, leaf first. Frames in hookshot_vk.dll / hookshot.exe are n
     bench_replay)
 
 Prints the functions by inclusive share (in the stack at all) and by self share (the leaf), and the leaf modules.
+
+The linker maps (hookshot.map, hookshot_vk.map) are looked for in RX_MAPS=<folder>, then this checkout's work/sa/build,
+then scripts/build-game.ps1's and build-vk.ps1's work folder (%LOCALAPPDATA%\\LongshotDev\\sa\\build). They must be the
+maps of the build that was sampled.
 """
 import bisect, collections, itertools, os, re, sys
 
-BUILD = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "work", "sa", "build")
+
+def build_dir():
+    """The folder with the sampled build's linker maps: the first of the three that has one"""
+    here = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "work", "sa", "build")
+    local = os.path.join(os.environ.get("LOCALAPPDATA", ""), "LongshotDev", "sa", "build")
+    for d in (os.environ.get("RX_MAPS"), here, local):
+        if d and (os.path.exists(os.path.join(d, "hookshot.map")) or os.path.exists(os.path.join(d, "hookshot_vk.map"))):
+            return d
+    return os.environ.get("RX_MAPS") or here
+
+
+BUILD = build_dir()
 
 
 def load_map(path, base):

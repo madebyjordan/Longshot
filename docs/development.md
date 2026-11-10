@@ -33,6 +33,8 @@ Run everything with `python -I` from this folder.
 | `powershell -File scripts/run-vk.ps1 [-Window] [-Seconds 120] [-Name x]` | a muted test run on Vulkan, with screenshots in `work/runs/<name>/shots` |
 | `powershell -File scripts/test-run.ps1 -Game <game folder> [-Renderer <dll>] [-Cache cold\|game\|<folder>]` | a test run on the game folder you play, without copying it or changing it (see below) |
 | `powershell -File scripts/build-vk.ps1` | the renderer alone, in `%LOCALAPPDATA%\LongshotDev` (see below) |
+| `powershell -File scripts/bench.ps1 [-Name x] [-Against <run>]` | a benchmark: a test run with no window on a pinned save, and its numbers as a table (see below) |
+| `python -I scripts/benchlog.py <log or run folder> [<another>]` | a run's numbers from its log, or two runs side by side |
 | `python -I scripts/prof.py <stacks file>` | a profile sampled with `HOS_SAMPLE=<thread>` + `HOS_SAMPLE_FILE=<stacks file>`, named from the linker maps |
 
 The dump can also come from `OOT_DUMP` (its folder) or `OOT_EXEFS`; `OOT_WORK` moves the work folder.
@@ -80,6 +82,45 @@ powershell -File scripts/test-run.ps1 -Game <game folder> -Renderer "$env:LOCALA
 
 Switches for one experiment go in with `-Env "NAME=1"` instead of a build of their own. A fully cold first start (AMD's
 driver cache moved aside too) is still `bench\bench_prepare.ps1`'s.
+
+`-Game` takes either folder: the builder's (`bin\hookshot.exe`) or a checkout's build such as `game-dev` (`hookshot.exe`
+beside `image.bin`). `-User <folder>` and `-Options <file>` start the run from saves and settings of your choosing in
+place of the game's. Started with `powershell -File`, `-Env "A=1","B=2"` arrives as one string; the script splits it at
+each comma that a `NAME=` follows.
+
+### Benchmarks
+
+`scripts/bench.ps1` is a test run made repeatable, with its numbers read out of the log:
+
+```powershell
+powershell -File scripts/bench.ps1 -Name base
+powershell -File scripts/bench.ps1 -Name try -Env "RX_VK_NO_WRITEBACK=1" -Against <Longshot>\runs\<time>-base
+```
+
+- **No window** (`HOS_HEADLESS`), muted, the game's own caches read-only: a warm start in about 10 s, and nothing in the game
+  folder written. The picture is still rendered at the size the settings ask for (`output_res`, or `HOS_OUTPUT_RES`);
+  only the last copy to the screen goes to a 1920 x 1080 image instead.
+- **The same save and settings every run**: `<Longshot>\bench\pinned` (`user\` and `hookshot_options.ini`), made from the
+  game folder's own the first time and again with `-Pin`. Save where you want to measure, then pin. The script presses A
+  from 32 s to 56 s to get from the title into the newest save and then leaves the pad alone, so the view is the same
+  every run; a save made facing something A acts on (a door, a person) may get one of those presses.
+- **The table** (`scripts/benchlog.py`, also on any `hookshot_log.txt`): the frame rate in play (median, 10th and 90th
+  percentile of the 120-present samples that draw a scene, the first four left out), the GPU's time a frame, the replay's
+  time by part, the busiest threads (`HOS_PROFILE`), the present intervals, the virtual cores' waits, pipelines built and
+  slow uploads in play, VRAM. `-Against` puts an earlier run beside it with the change. It is kept as `bench.txt` in the
+  run's folder.
+- `-Timing` adds the GPU's time by pass and program (`RX_VK_PASS_TIMING=1`). Its timestamps make the GPU time longer:
+  compare a timed run only with another timed one.
+- `-SampleAll` (test-run.ps1's too) samples every thread's stack every 2 ms from 60 s in, into `stacks_all.txt` in the
+  run's folder, for `scripts/crit.py`, `scripts/vkprof.py` and `scripts/hotlist.py`. It costs a few percent of the frame
+  rate and about 5 MB a second: not for a run whose frame rate is the result, and delete the file once read. Those
+  scripts find the linker maps in `RX_MAPS`, this checkout's `work\sa\build`, or `%LOCALAPPDATA%\LongshotDev\sa\build`;
+  they must be the maps of the build that ran.
+
+Two runs of the same build on the same save agreed within 1% on the frame rate and the GPU's time and within 5% on the
+replay's parts (one pair, Ryzen 5 5600 and RX 6700 XT, 2026-11-10). The virtual cores' wait counts and the present
+intervals' tails differed by half or more: read those as orders of magnitude. Run the baseline twice on your own PC
+before reading a small change as a gain.
 
 Scripted test input (`HOS_INPUT_SCRIPT` and `HOS_INPUT_LIVE`) is applied before the window-focus check. A log saying
 the game window is not in front does not mean those presses were discarded. `HOS_HEADLESS` and
