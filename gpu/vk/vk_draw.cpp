@@ -958,6 +958,23 @@ void state_record(const Program& p, const NvnState& s, const Targets& at, VkPrim
     }
     if (state_file && state_seen.insert(h).second) fwrite(&r, sizeof r, 1, state_file), fflush(state_file);
 }
+/// (longshot) Pipelines built without the driver's optimizer. RX_VK_NOOPT=1: on, RX_VK_NOOPT=0: off; unset, on with AMD's own driver
+/// (not RADV), whose compiler took 10 to 60 s on some Ocarina shaders it builds in well under one without it (and crashed on others,
+/// Lichii #200, #210). Every Longshot test on an RX 6700 XT ran this way: play, the first start's times, the shipped pipeline list
+static bool pipelines_noopt() {
+    static const bool on = [] {
+        if (const char* e = getenv("RX_VK_NOOPT")) return strcmp(e, "0") != 0;
+        VkPhysicalDeviceDriverProperties dp{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
+        VkPhysicalDeviceProperties2 p2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+        p2.pNext = &dp;
+        if (!dev.physical) return false;
+        vkGetPhysicalDeviceProperties2(dev.physical, &p2);
+        const bool amd = dp.driverID == VK_DRIVER_ID_AMD_PROPRIETARY;
+        if (amd) logf("vk: pipelines built without the driver's optimizer (AMD's driver; RX_VK_NOOPT=0: with it)");
+        return amd;
+    }();
+    return on;
+}
 static size_t state_list_noted = 0;   // (this start's state list pipelines, noted: predict_run leaves its guesses out then)
 /// (prepare_run, the seed open) every pipeline of the state lists (the player's own and the shipped one): its program translated
 /// when the program cache lacks it, then noted in hookshot_pipelines.bin for precompile_run to build. RX_VK_NO_STATE_LIST=1: off
@@ -1444,7 +1461,7 @@ VkPipeline build_graphics(const Program& p, const NvnState& s, const Targets& at
     VkPipeline pl = VK_NULL_HANDLE;
     {   // (local) RX_VK_NOOPT=1: build every pipeline without the driver's optimizer. AMD's proprietary compiler crashes
         // (-13 here) or takes minutes on some Ocarina shaders it builds in seconds unoptimized (Lichii #200, #210).
-        static const bool noopt = getenv("RX_VK_NOOPT") != nullptr;
+        static const bool noopt = pipelines_noopt();
         if (noopt) ci.flags |= VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT;
         // (from PR 430, YunaraDebugs: on AMD the task and mesh programs (OoT's foliage culling, following pointers through its
         // tables) hung the GPU when the driver's optimizer built them: a device lost one to four minutes into Kokiri, each time with
@@ -5723,7 +5740,7 @@ bool prepare_run(void (*progress)(size_t done, size_t total)) {
         ci.stage.pName = "main";
         pin_subgroup(ci.stage, p.workgroup[0]);
         ci.layout = p.layout;
-        if (getenv("RX_VK_NOOPT")) ci.flags |= VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT;
+        if (pipelines_noopt()) ci.flags |= VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT;
         VkPipeline pl = VK_NULL_HANDLE;
         // (into the app's pipeline cache, saved to mkw_vk_pipelines.bin: without it the next start compiled them again in play
         // where the driver's own cache missed them, AMD's 15 s culling compiles each time)
@@ -5863,7 +5880,7 @@ void precompile_run(void (*progress)(size_t done, size_t total)) {
                 ci.layout = p.layout;
                 // (RX_VK_NOOPT=1 as the prepare's warm-up and the dispatches build them: without it, the first start after a
                 // new build missed every one the warm-up had just made and ran the optimizer on all 10107 again)
-                static const bool noopt = getenv("RX_VK_NOOPT") != nullptr;
+                static const bool noopt = pipelines_noopt();
                 if (noopt) ci.flags |= VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT;
                 VkPipeline made = VK_NULL_HANDLE;
                 if (vkCreateComputePipelines(dev.device, pcache, 1, &ci, nullptr, &made) != VK_SUCCESS) made = VK_NULL_HANDLE;
@@ -6103,7 +6120,7 @@ void dispatch(VkCommandBuffer cmd, NvnState& s, uint32_t x, uint32_t y, uint32_t
                 ci.stage.pName = "main";
                 pin_subgroup(ci.stage, q.workgroup[0]);
                 ci.layout = q.layout;
-                static const bool noopt = getenv("RX_VK_NOOPT") != nullptr;
+                static const bool noopt = pipelines_noopt();
                 if (noopt) ci.flags |= VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT;
                 const auto t0 = std::chrono::steady_clock::now();
                 VkPipeline made = VK_NULL_HANDLE;
@@ -6149,7 +6166,7 @@ void dispatch(VkCommandBuffer cmd, NvnState& s, uint32_t x, uint32_t y, uint32_t
         pin_subgroup(ci.stage, p.workgroup[0]);
         ci.layout = p.layout;
         {   // (local) RX_VK_NOOPT=1, as for graphics pipelines above
-            static const bool noopt = getenv("RX_VK_NOOPT") != nullptr;
+            static const bool noopt = pipelines_noopt();
             if (noopt) ci.flags |= VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT;
         }
         const auto t0 = std::chrono::steady_clock::now();
