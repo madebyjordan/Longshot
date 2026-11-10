@@ -34,3 +34,4 @@ __pycache__/
 # ---- Linux builds ----
 build-linux/
 *.so
+!lists/pipeline_states.bin

@@ -722,8 +722,11 @@ def ship_state_list(out):
     """The pipeline state list made from a play of the game on the development PC (work/pipeline_states.bin: each pipeline's stage
     code keys, vertex and target formats and draw state; hashes and state only, no game code), as the folder's
     hookshot_pipeline_states_shipped.bin: the first start's shader preparation builds those pipelines before the title, from the
-    player's own shaders (hookshot_shaders.bin), instead of compiling each when it is first drawn. Good for any build: optional"""
+    player's own shaders (hookshot_shaders.bin), instead of compiling each when it is first drawn. Good for any build: optional.
+    (longshot) With none in work/, the list in the source (lists/pipeline_states.bin), so a build from source ships it too"""
     src = os.path.join(ROOT, "work", "pipeline_states.bin")
+    if not os.path.isfile(src):
+        src = os.path.join(ROOT, "lists", "pipeline_states.bin")
     dst = os.path.join(out, "hookshot_pipeline_states_shipped.bin")
     if not os.path.isfile(src):
         return
