@@ -77,6 +77,9 @@
         <Border x:Name="VersionChip" Margin="12,0,0,0" VerticalAlignment="Center" Visibility="Collapsed">
           <TextBlock x:Name="VersionChipText" FontSize="12" Foreground="{StaticResource InkSoft}" VerticalAlignment="Center"/>
         </Border>
+        <!-- (opened from the launcher, Launcher.cs: the way back to it) -->
+        <Button x:Name="BackToLauncher" Style="{StaticResource LinkButton}" Content="Back to the launcher" FontSize="12" Margin="16,0,0,0"
+                VerticalAlignment="Center" Visibility="Collapsed" WindowChrome.IsHitTestVisibleInChrome="True" Click="BackToLauncherClick"/>
       </StackPanel>
 
       <Border x:Name="StepPill" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,12,0,0" Padding="4" Height="40" CornerRadius="20"
@@ -335,6 +338,8 @@
           <FontFamily x:Key="Icons">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
           <SolidColorBrush x:Key="Leather" Color="#815E40"/>
           <BooleanToVisibilityConverter x:Key="Shown"/>
+          <!-- Play's outline, as drawn: a torn strip of leather (257 x 98) -->
+          <Geometry x:Key="StripShape">M442.631 118.999C448.417 120.005 452.962 121.032 453.489 121.045 454.487 121.07 475.335 122.287 486.302 122.555 492.957 122.718 503.52 122.793 511 122.832 511 122.832 511 209.654 511 209.654 507.192 209.846 503.557 210.032 500.7 210.184 489.689 210.771 468.701 212.289 467.693 212.334 466.816 212.373 448.015 213.053 438.322 213.404 428.277 213.767 422.536 210.245 407.737 214.229 393.317 218.111 390.477 212.062 381.226 212.077 379.3 211.44 377.766 210.981 374.519 210.872 371.312 210.795 368.683 210.668 366.926 210.58 366.565 210.561 366.344 210.703 366.319 210.868 366.299 211 366.404 211.146 366.666 211.24 367.285 211.46 368.092 211.706 369.122 211.973 369.942 212.176 370.856 212.491 371.844 212.858 361.446 214.11 348.69 216.408 348.008 216.433 347.223 216.461 332.4 217.028 322.124 217.407 322.124 217.407 254 217.407 254 217.407 254 217.407 254 118.999 254 118.999 254 118.999 442.631 118.999 442.631 118.999Z</Geometry>
           <!-- the wordmark's letters, as drawn (in their drawing they start at 131.803, 12.673 and are 561.741 x 86.14) -->
           <GeometryGroup x:Key="Wordmark" FillRule="Nonzero">
             <PathGeometry FillRule="EvenOdd" Figures="M173.946 88.3678L184.037 62.7213L188.356 51.7414V65.7597V96.7783H131.803L141.455 88.3678V23.3899L131.803 14.9794H171.499L161.711 23.3899V88.3678H173.946Z"/>
@@ -367,6 +372,7 @@
           <!-- a round-ended button: All Versions (black), Check for updates (leather), the version under Play (no fill) -->
           <Style x:Key="Pill" TargetType="Button">
             <Setter Property="Background" Value="#000000"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
             <Setter Property="Padding" Value="24,8"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FocusVisualStyle" Value="{StaticResource Ring}"/>
@@ -379,7 +385,7 @@
                     <StackPanel Orientation="Horizontal" Margin="{TemplateBinding Padding}" HorizontalAlignment="Center">
                       <!-- (a dot before the word when the button's Tag is "news": All Versions, when a newer release is out) -->
                       <Ellipse x:Name="Dot" Width="8" Height="8" Fill="#EBB07E" Margin="-4,0,10,0" VerticalAlignment="Center" Visibility="Collapsed"/>
-                      <TextBlock Style="{StaticResource Line}" Text="{TemplateBinding Content}"/>
+                      <TextBlock Style="{StaticResource Line}" Text="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}"/>
                     </StackPanel>
                   </Grid>
                   <ControlTemplate.Triggers>
@@ -405,16 +411,7 @@
               <Setter.Value>
                 <ControlTemplate TargetType="Button">
                   <Grid x:Name="All">
-                    <Path x:Name="Strip" Stretch="Fill" Fill="{StaticResource Leather}"
-                          Data="M442.631 118.999C448.417 120.005 452.962 121.032 453.489 121.045 454.487 121.07 475.335 122.287 486.302 122.555
-                                492.957 122.718 503.52 122.793 511 122.832 511 122.832 511 209.654 511 209.654 507.192 209.846 503.557 210.032
-                                500.7 210.184 489.689 210.771 468.701 212.289 467.693 212.334 466.816 212.373 448.015 213.053 438.322 213.404
-                                428.277 213.767 422.536 210.245 407.737 214.229 393.317 218.111 390.477 212.062 381.226 212.077 379.3 211.44
-                                377.766 210.981 374.519 210.872 371.312 210.795 368.683 210.668 366.926 210.58 366.565 210.561 366.344 210.703
-                                366.319 210.868 366.299 211 366.404 211.146 366.666 211.24 367.285 211.46 368.092 211.706 369.122 211.973
-                                369.942 212.176 370.856 212.491 371.844 212.858 361.446 214.11 348.69 216.408 348.008 216.433 347.223 216.461
-                                332.4 217.028 322.124 217.407 322.124 217.407 254 217.407 254 217.407 254 217.407 254 118.999 254 118.999
-                                254 118.999 442.631 118.999 442.631 118.999Z"/>
+                    <Path x:Name="Strip" Stretch="Fill" Fill="{StaticResource Leather}" Data="{StaticResource StripShape}"/>
                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                   </Grid>
                   <ControlTemplate.Triggers>
@@ -608,6 +605,13 @@
             <TextBlock.RenderTransform><TranslateTransform x:Name="LauncherGoNudge"/></TextBlock.RenderTransform>
           </TextBlock>
         </Button>
+        <Grid x:Name="LauncherProgress" Width="257" Height="98" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,91"
+              Visibility="Collapsed" IsHitTestVisible="False">
+          <Path Stretch="Fill" Fill="{StaticResource Leather}" Opacity="0.35" Data="{StaticResource StripShape}"/>
+          <Path Stretch="Fill" Fill="{StaticResource Leather}" Data="{StaticResource StripShape}">
+            <Path.Clip><RectangleGeometry x:Name="ProgressClip" Rect="0,0,0,98"/></Path.Clip>
+          </Path>
+        </Grid>
         <Button x:Name="LauncherVersion" Style="{StaticResource Pill}" Background="Transparent" Padding="42,8" VerticalAlignment="Bottom"
                 HorizontalAlignment="Center" Margin="0,0,0,38" ToolTip="Open the game folder" Click="LauncherFolderClick"/>
         <TextBlock x:Name="LauncherStatus" FontFamily="Segoe UI" FontSize="13" Foreground="#BCBCBC" VerticalAlignment="Bottom" HorizontalAlignment="Center"
@@ -616,6 +620,14 @@
 
         <Button x:Name="LauncherAll" Style="{StaticResource Pill}" Content="All Versions" VerticalAlignment="Bottom" HorizontalAlignment="Left"
                 Margin="24,0,0,38" Click="LauncherAllClick"/>
+        <!-- (in its place while a version is brought, and when that stopped: Paper, "v2 - Updating" and "v2 - Update stopped") -->
+        <Button x:Name="LauncherCancel" Style="{StaticResource Pill}" Content="Cancel" VerticalAlignment="Bottom" HorizontalAlignment="Left"
+                Margin="24,0,0,38" Visibility="Collapsed" Click="LauncherCancelClick"/>
+        <StackPanel x:Name="LauncherStopped" Orientation="Horizontal" VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="24,0,0,38"
+                    Visibility="Collapsed">
+          <Button Style="{StaticResource Pill}" Content="Back" Click="LauncherBackToIdleClick"/>
+          <Button x:Name="LauncherCopy" Style="{StaticResource Pill}" Content="Copy details" Margin="8,0,0,0" Click="LauncherCopyClick"/>
+        </StackPanel>
 
         <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="0,0,24,40">
           <Button Style="{StaticResource MarkButton}" ToolTip="Longshot on GitHub" AutomationProperties.Name="Longshot on GitHub" Tag="https://github.com/madebyjordan/longshot" Click="LauncherLinkClick">
@@ -705,6 +717,14 @@
                   </ItemsControl.ItemContainerStyle>
                 </ItemsControl>
               </StackPanel>
+              <!-- (the builder's own pages: a build from other game files, the options a build has) -->
+              <Button x:Name="LauncherBuild" Style="{StaticResource FoldInk}" Margin="0,40,0,0" Click="LauncherBuildClick"
+                      AutomationProperties.Name="Build from game files">
+                <Grid Height="40">
+                  <TextBlock Style="{StaticResource Line}" Text="Build from game files" VerticalAlignment="Center"
+                             Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                </Grid>
+              </Button>
             </StackPanel>
           </ScrollViewer>
         </Border>

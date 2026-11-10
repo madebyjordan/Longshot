@@ -44,10 +44,14 @@ public partial class MainWindow : Window
     double compileEta = -1;
     long thisCompile, previousTotal = -1;
     string lastFailure = "";
+    /// The game folder this window opens as the launcher of (Launcher.cs): the one Longshot.exe in a game folder names
+    /// (--launch), or, opened with nothing asked, the game built last. null: the installer's own pages
+    readonly string? launchAt;
 
     public MainWindow()
     {
         InitializeComponent();
+        launchAt = LaunchArg() ?? HomeGame();
         OutPath.Text = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Games", "Longshot");
         LanguageBox.ItemsSource = Strings.All;
         LanguageBox.SelectedItem = lang;
@@ -57,7 +61,7 @@ public partial class MainWindow : Window
         Drop += Dropped;
         SourceInitialized += (_, _) =>
         {
-            if (LaunchArg() != null)   // (the launcher: its own dark page from the first frame, no grey acrylic before it draws)
+            if (launchAt != null)   // (the launcher: its own dark page from the first frame, no grey acrylic before it draws)
             {
                 var dark = new SolidColorBrush(Color.FromRgb(0x12, 0x12, 0x12));
                 Background = dark;
@@ -77,7 +81,7 @@ public partial class MainWindow : Window
             : "Longshot's build tools are missing from its folder. Press Build and Longshot offers to download them again.";
         SetStep(0);
         Refresh();
-        if (LaunchArg() != null)   // (the launcher from the window's first frame: no start-up animation before it)
+        if (launchAt != null)   // (the launcher from the window's first frame: no start-up animation before it)
         {
             Splash.Visibility = Visibility.Collapsed;
             LauncherWindow(true);
@@ -105,7 +109,7 @@ public partial class MainWindow : Window
             Application.Current.Shutdown();
             return;
         }
-        if (LaunchArg() is { } launchFolder)   // (Longshot.exe in the game folder: the launcher at once, Launcher.cs)
+        if (launchAt is { } launchFolder)   // (Longshot.exe in the game folder, or the game built last: the launcher at once, Launcher.cs)
         {
             Main.Opacity = 1;   // (under the launcher, for an update or a switch it starts)
             MainLift.Y = 0;
@@ -123,18 +127,28 @@ public partial class MainWindow : Window
             Updater.FromCommandLine(this);
             return;
         }
+        await OpenInstallerPages(started);
+    }
+
+    /// The installer's own pages: after the start-up screen (splash: since when it shows), or from the launcher's "Build from
+    /// game files" (null: at once)
+    async Task OpenInstallerPages(Stopwatch? splash)
+    {
         SplashText.Text = "Looking for your game files…";
         var found = await Task.Run(Finder.FindDumps);
+        dumps.Clear();
         dumps.AddRange(found);
         SplashText.Text = found.Count switch { 0 => "No game files found yet", 1 => "Found 1 game file", _ => $"Found {found.Count} game files" };
-        var wait = 1700 - (int)started.ElapsedMilliseconds;
+        var wait = splash == null ? 0 : 1700 - (int)splash.ElapsedMilliseconds;
         if (wait > 0) await Task.Delay(wait);
         ApplySettings();
         FillDumps();
         ShowMain();
-        if (Environment.GetEnvironmentVariable("HOOKSHOT_UI_PREVIEW") is { Length: > 0 } preview) { Preview(preview); return; }
+        if (splash != null && Environment.GetEnvironmentVariable("HOOKSHOT_UI_PREVIEW") is { Length: > 0 } preview) { Preview(preview); return; }
         CheckAll();
-        latestTag = Environment.GetEnvironmentVariable("HOOKSHOT_LATEST_TAG") is { Length: > 0 } fake ? (fake == "none" ? null : fake) : await Updater.LatestTag();
+        // (from the launcher: the latest release is the one it already asked GitHub for)
+        if (splash != null)
+            latestTag = Environment.GetEnvironmentVariable("HOOKSHOT_LATEST_TAG") is { Length: > 0 } fake ? (fake == "none" ? null : fake) : await Updater.LatestTag();
         RefreshMode();
     }
 
@@ -204,6 +218,20 @@ public partial class MainWindow : Window
     // ---- the launcher: Hookshot Launcher.exe in a game folder starts this with --launch <folder> (builder/setup/setup.c) ----
     string launchFolder = "";
 
+    /// (opened with nothing asked: the builder is the launcher of the game it built last, when that game is still there. Anything
+    /// asked of it (--update, --build, a development switch) opens its own pages as before)
+    static string? HomeGame()
+    {
+        if (Environment.GetCommandLineArgs().Length > 1) return null;
+        foreach (var asked in new[] { "HOOKSHOT_UI_PREVIEW", "HOOKSHOT_TEST_SHORTCUTS" })
+            if (Environment.GetEnvironmentVariable(asked) is { Length: > 0 }) return null;
+        string? folder = null;
+        try { folder = System.Text.Json.JsonSerializer.Deserialize<BuilderSettings>(File.ReadAllText(SettingsPath))?.Out; } catch (Exception) { }
+        if (string.IsNullOrWhiteSpace(folder))
+            folder = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Games", "Longshot");
+        return File.Exists(GameExe(folder)) ? folder.TrimEnd('\\', '/') : null;
+    }
+
     static string? LaunchArg()
     {
         var a = Environment.GetCommandLineArgs();
@@ -248,8 +276,7 @@ public partial class MainWindow : Window
         public bool Dlss { get; set; }   // (NVIDIA DLSS ticked: NVIDIA's license was accepted)
         public bool Fsr { get; set; }    // (AMD FSR 4 ticked)
     }
-    static string SettingsPath => System.IO.Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LongshotBuilder", "builder-settings.json");
+    static string SettingsPath => System.IO.Path.Combine(Storage.Base, "builder-settings.json");
 
     void ApplySettings()
     {
@@ -1171,8 +1198,10 @@ public partial class MainWindow : Window
 
     void CloseWindow(object sender, RoutedEventArgs e)
     {
-        if (runner != null && MessageBox.Show(this, T(S.CloseQuestion), "Longshot", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
+        // (a build under way, the installer's or one the launcher started)
+        if ((runner != null || LauncherBusy) && MessageBox.Show(this, T(S.CloseQuestion), "Longshot", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
         runner?.Cancel();
+        CancelLaunchWork();
         Close();
     }
 }

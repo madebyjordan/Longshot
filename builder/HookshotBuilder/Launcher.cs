@@ -26,6 +26,20 @@ public partial class MainWindow
     enum Go { Play, Bring, None }                // (Bring: the folder is updated or built again to the version picked first)
     Go launchGo;
 
+    // (while a version is brought the launcher stays: the programs that do it are hidden, and it says how far they are)
+    enum LaunchState { Idle, Working, Stopped }
+    LaunchState launchState;
+    LaunchWork? work;                  // (what is being brought, and how far it is: LaunchWork.cs)
+    LaunchChoice? workTarget;
+    Process? enginePull;               // (the setup in its engine mode: that version's builder installed beside this one)
+    Runner? launchRunner;              // (that version's own make_game.py)
+    bool workCancelled, shotWorking, cancelHalfWay;
+    string workStopped = "";           // (why it stopped)
+    readonly System.Text.StringBuilder workLog = new();
+    static readonly Brush StoppedInk = Frozen(0xE2, 0x77, 0x6B);
+
+    internal bool LauncherBusy => launchState == LaunchState.Working;
+
     LaunchChoice? Picked => launchLists?.Picked;
 
     async void ShowLauncher(string folder)
@@ -51,28 +65,50 @@ public partial class MainWindow
         };
         launchBuilt = GameVersion(folder) ?? ReadVersion(folder);
         launchPick = LastChoice(folder);
-        // (development) HOOKSHOT_UI_PREVIEW=versions,older,max,pick=release:v1.1.0 (any of them): the bar of versions open from the
-        // start, its older releases unfolded, the window maximised, that version picked
+        // (development) HOOKSHOT_UI_PREVIEW=versions,older,max,pick=release:v1.1.0,go,pages (any of them): the bar of versions open
+        // from the start, its older releases unfolded, the window maximised, that version picked, the button pressed, "Build
+        // from game files" pressed; cancel: Cancel pressed when what the button started is 40% done
         var preview = (Environment.GetEnvironmentVariable("HOOKSHOT_UI_PREVIEW") ?? "").Split(',', StringSplitOptions.TrimEntries);
         if (preview.FirstOrDefault(p => p.StartsWith("pick=")) is { } pick) launchPick = pick[5..];
         olderOpen = preview.Contains("older");
+        cancelHalfWay = preview.Contains("cancel");
         // (what is on this PC at once; GitHub's releases when they come)
         FillChoices();
         if (preview.Contains("versions")) ShowVersions(true, atOnce: true);
         if (preview.Contains("max")) WindowState = WindowState.Maximized;
         await CheckReleases(say: false);
         // (development) HOOKSHOT_UI_SHOT=<file.png>: the window as drawn, once the releases are in, and out (the window opens away
-        // from the screen and takes no keys, MainWindow's constructor)
-        if (Environment.GetEnvironmentVariable("HOOKSHOT_UI_SHOT") is { Length: > 0 } shot)
+        // from the screen and takes no keys, MainWindow's constructor). With go: drawn half way (<file>-working.png) and when
+        // what the button started has ended (WorkEnded)
+        if (preview.Contains("go"))
+        {
+            LauncherGoClick(this, new RoutedEventArgs());
+            if (launchState != LaunchState.Idle) return;
+        }
+        if (preview.Contains("pages"))   // ("Build from game files" pressed: the builder's own pages, in this window)
+        {
+            LauncherBuildClick(this, new RoutedEventArgs());
+            await Task.Delay(2500);
+        }
+        if (Shot != null)
         {
             await Task.Delay(500);
-            var picture = new RenderTargetBitmap((int)ActualWidth, (int)ActualHeight, 96, 96, PixelFormats.Pbgra32);
-            picture.Render(this);
-            var png = new PngBitmapEncoder();
-            png.Frames.Add(BitmapFrame.Create(picture));
-            using (var file = File.Create(shot)) png.Save(file);
+            SaveShot(Shot);
             Application.Current.Shutdown();
         }
+    }
+
+    static string? Shot => Environment.GetEnvironmentVariable("HOOKSHOT_UI_SHOT") is { Length: > 0 } file ? file : null;
+
+    void SaveShot(string file)
+    {
+        UpdateLayout();
+        var picture = new RenderTargetBitmap((int)ActualWidth, (int)ActualHeight, 96, 96, PixelFormats.Pbgra32);
+        picture.Render(this);
+        var png = new PngBitmapEncoder();
+        png.Frames.Add(BitmapFrame.Create(picture));
+        using var to = File.Create(file);
+        png.Save(to);
     }
 
     /// The launcher's window: 960x640 under its own title bar, and it can be maximised. The installer's (an update or a switch the
@@ -178,6 +214,16 @@ public partial class MainWindow
     /// What the button does for the version picked; its name under the button, and a line under that when there is one to say
     void ShowGo()
     {
+        ShowPills();
+        if (launchState != LaunchState.Idle)
+        {
+            ShowBring();
+            return;
+        }
+        LauncherGo.Visibility = Visibility.Visible;
+        LauncherProgress.Visibility = Visibility.Collapsed;
+        LauncherVersion.Foreground = Brushes.White;
+        (LauncherStatus.ToolTip, LauncherStatus.IsHitTestVisible) = (null, false);
         var c = Picked;
         var (text, news, verb) = ("", false, "Play");
         if (c == null)
@@ -225,6 +271,12 @@ public partial class MainWindow
 
     void LauncherGoClick(object sender, RoutedEventArgs e)
     {
+        if (launchState == LaunchState.Working) return;
+        if (launchState == LaunchState.Stopped)   // (the button says Retry)
+        {
+            if (workTarget != null) StartWork(workTarget);
+            return;
+        }
         if (Picked is not { } c) return;
         SaveChoice(launchFolder, c.Key);
         switch (launchGo)
@@ -233,17 +285,259 @@ public partial class MainWindow
                 StartGame(c.Folder ?? launchFolder);
                 Application.Current.Shutdown();
                 break;
-            case Go.Bring when BuilderHere(c.Tag!) is { } tools:
-                LauncherWindow(false);
-                BeginUpdate(launchFolder, c.Tag);
-                UpdateBuild(tools, launchFolder);
+            case Go.Bring when BuilderHere(c.Tag!) != null || EngineSetup() != null:
+                StartWork(c);
                 break;
             case Go.Bring:
-                // (the latest release as before; any other by its own tag: a pre-release, or one to go back to)
+                // (a setup from before it could install a version beside this one: the builder's own update, in its own
+                // window, as it was. The latest release as before; any other by its own tag)
                 LauncherWindow(false);
                 Updater.UpdateFolder(this, launchFolder, c.Tag, fetched: false, exact: !SameTag(c.Tag, latestTag));
                 break;
         }
+    }
+
+    // ---- a version brought: the launcher stays, and hidden programs do it (Paper: "v2 - Updating", "v2 - Update stopped") ----
+
+    /// The setup beside this builder, when it has the engine mode (builder/setup/setup.c, --engine). One from before would take
+    /// the word for an ordinary install: it would open its window, make that version the one in use and remove this one
+    static string? EngineSetup()
+    {
+        try
+        {
+            var setup = System.IO.Path.Combine(AppContext.BaseDirectory, "LongshotBuilder-Setup.exe");
+            if (!File.Exists(setup)) return null;
+            var has = File.ReadAllBytes(setup).AsSpan().IndexOf(System.Text.Encoding.Unicode.GetBytes("--engine")) >= 0;
+            return has ? setup : null;
+        }
+        catch (Exception) { return null; }
+    }
+
+    /// The version picked brought into the launch folder: its builder installed beside this one when it is not on the PC (the
+    /// setup, hidden), then the folder built with that builder's own tools (its make_game.py, hidden). The window is the
+    /// launcher's throughout
+    async void StartWork(LaunchChoice c)
+    {
+        var tag = c.Tag!;
+        var tools = BuilderHere(tag);
+        var ahead = launchBuilt == null || !IsRelease(launchBuilt) || Newer(tag, launchBuilt);
+        (workTarget, work, workCancelled, workStopped, shotWorking) = (c, new LaunchWork(VersionName(tag), ahead, fetch: tools == null), false, "", false);
+        workLog.Clear();
+        launchState = LaunchState.Working;
+        ShowVersions(false);
+        ShowGo();
+        if (tools == null)
+        {
+            var why = await PullEngine(tag);
+            if (why == null && (tools = BuilderHere(tag)) == null)
+                why = $"The builder of {VersionName(tag)} is not there after it was installed. Your antivirus may have removed it.";
+            if (why != null)
+            {
+                WorkEnded(why);
+                return;
+            }
+        }
+        int? workers = null;
+        try { workers = BuildWorkers.Selected(WorkerBox.SelectedItem); } catch (ArgumentException) { }
+        // (as the builder's own update does it, UpdateBuild: a folder built with NVIDIA DLSS, its license accepted then, is built
+        // with it again; the build files where the player chose)
+        var dlss = File.Exists(System.IO.Path.Combine(launchFolder, "ngx", "nvngx_dlss.dll")) &&
+                   File.Exists(System.IO.Path.Combine(Storage.NgxSdk, "LICENSE.txt"));
+        var args = new List<string> { "--update", launchFolder };
+        if (Storage.WorkChosen) args.AddRange(new[] { "--work", Storage.Work });
+        if (dlss) args.AddRange(new[] { "--fetch-ngx-sdk", "--accept-nvidia-license" });
+        launchRunner = new Runner(tools!, args, workers, dlss ? Storage.NgxSdk : null);
+        launchRunner.Line += l => Dispatcher.BeginInvoke(() => WorkLine(l));
+        launchRunner.Finished += failure => Dispatcher.BeginInvoke(() => WorkEnded(failure));
+        launchRunner.Start();
+    }
+
+    /// The setup in its engine mode: that release installed beside the others, nothing started, nothing removed. null: done
+    async Task<string?> PullEngine(string tag)
+    {
+        try
+        {
+            var si = new ProcessStartInfo(EngineSetup()!)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+            };
+            foreach (var a in new[] { "--engine", "--tag", tag }) si.ArgumentList.Add(a);
+            using var p = Process.Start(si)!;
+            enginePull = p;
+            while (await p.StandardOutput.ReadLineAsync() is { } line) WorkLine(line);
+            await p.WaitForExitAsync();
+            enginePull = null;
+            if (workCancelled) return "cancelled";
+            return p.ExitCode == 0 ? null : work?.Error ?? "The setup stopped without saying why.";
+        }
+        catch (Exception e)
+        {
+            enginePull = null;
+            return workCancelled ? "cancelled" : "The setup could not be started: " + e.Message;
+        }
+    }
+
+    void WorkLine(string line)
+    {
+        if (work == null) return;
+        work.Line(line);
+        workLog.AppendLine(line);
+        if (workLog.Length > 600_000) workLog.Remove(0, workLog.Length - 400_000);
+        ShowBring();
+        if (Shot != null && !shotWorking && work.Fraction >= 0.4)   // (development: the working state drawn once, on the way)
+        {
+            shotWorking = true;
+            SaveShot(System.IO.Path.ChangeExtension(Shot, null) + "-working.png");
+        }
+        if (cancelHalfWay && work.Fraction >= 0.4)
+        {
+            cancelHalfWay = false;
+            CancelLaunchWork();
+        }
+    }
+
+    /// failure: null (it ended well), "cancelled", or why it stopped
+    void WorkEnded(string? failure)
+    {
+        (launchRunner, enginePull) = (null, null);
+        if (work?.Done != null)
+        {
+            // (the folder holds the version picked now: what the launcher shows is read again from it)
+            launchBuilt = GameVersion(launchFolder) ?? ReadVersion(launchFolder);
+            if (workTarget?.Tag is { } tag) NextBuilder(tag);
+            if (Shot == null) Finder.RefreshShortcuts(launchFolder);   // (the player's shortcuts, onto the folder's launcher again)
+            // (as after any build: the build files go, and a version's builder that is no longer the one in use)
+            var freed = Storage.KeepBuildFiles ? Task.CompletedTask : Task.Run(Storage.Free);
+            if (Shot != null) freed.Wait(20000);   // (development: it is out as soon as it is drawn)
+            launchState = LaunchState.Idle;
+        }
+        else if (failure == "cancelled" || workCancelled) launchState = LaunchState.Idle;
+        else
+        {
+            workStopped = failure ?? work?.Error ?? "The build tools stopped without saying why.";
+            launchState = LaunchState.Stopped;
+        }
+        if (launchState == LaunchState.Idle) FillChoices();
+        else ShowGo();
+        if (Shot != null)   // (development: drawn as it ended, and out)
+        {
+            SaveShot(Shot);
+            Application.Current.Shutdown();
+        }
+    }
+
+    /// After a release ahead of the builder in use was brought: its builder, which came with it, is the one in use from the next
+    /// start (versions\current.txt, which the game folder's Longshot.exe reads; what Storage.Free keeps). The launcher never
+    /// goes back to an older one this way, and not to a pre-release's
+    static void NextBuilder(string tag)
+    {
+        try
+        {
+            if (IsPre(tag) || BuilderHere(tag) is not { } tools) return;
+            var current = System.IO.Path.Combine(Storage.Base, "versions", "current.txt");
+            var folder = System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(System.IO.Path.GetDirectoryName(tools.Root.TrimEnd('\\'))));
+            var now = File.ReadAllText(current).Trim();
+            if (folder is { Length: > 0 } && IsRelease(now) && Newer(tag, now)) File.WriteAllText(current, folder);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }   // (no current.txt: not a setup's install)
+    }
+
+    /// The window while a version is brought (the strip fills from the left, in the button's place) and when that stopped
+    void ShowBring()
+    {
+        if (work == null) return;
+        var working = launchState == LaunchState.Working;
+        LauncherGo.Visibility = working ? Visibility.Hidden : Visibility.Visible;
+        LauncherProgress.Visibility = working ? Visibility.Visible : Visibility.Collapsed;
+        LauncherVersion.IsHitTestVisible = false;
+        if (working)
+        {
+            ProgressClip.Rect = new Rect(0, 0, LauncherProgress.Width * work.Fraction, LauncherProgress.Height);
+            LauncherVersion.Content = work.Title;
+            LauncherVersion.Foreground = Brushes.White;
+            LauncherStatus.Text = work.Detail;
+            LauncherStatus.Foreground = QuietInk;
+            (LauncherStatus.ToolTip, LauncherStatus.IsHitTestVisible) = (null, false);
+            return;
+        }
+        LauncherGoText.Text = "Retry";
+        LauncherGo.IsEnabled = true;
+        LauncherVersion.Content = work.StoppedTitle;
+        LauncherVersion.Foreground = StoppedInk;
+        // (the folder is swapped only once the new game is complete, make_game.py: one that stopped left it as it was. The line
+        // is one line: a long reason has it to itself, cut where it ends and whole under the pointer and in Copy details)
+        const string kept = "Nothing was changed in your game folder.";
+        var why = workStopped.TrimEnd('.') + ".";
+        LauncherStatus.Text = why.Length + kept.Length <= 96 ? why + " " + kept : why;
+        LauncherStatus.Foreground = QuietInk;
+        LauncherStatus.ToolTip = why + " " + kept;
+        LauncherStatus.IsHitTestVisible = true;
+    }
+
+    /// The buttons at the bottom left: All Versions; Cancel while a version is brought; Back and Copy details when that stopped
+    void ShowPills()
+    {
+        LauncherAll.Visibility = launchState == LaunchState.Idle && !versionsOpen ? Visibility.Visible : Visibility.Collapsed;
+        LauncherCancel.Visibility = launchState == LaunchState.Working ? Visibility.Visible : Visibility.Collapsed;
+        LauncherStopped.Visibility = launchState == LaunchState.Stopped ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    void LauncherCancelClick(object sender, RoutedEventArgs e) => CancelLaunchWork();
+
+    internal void CancelLaunchWork()
+    {
+        if (launchState != LaunchState.Working) return;
+        workCancelled = true;
+        launchRunner?.Cancel();
+        try { enginePull?.Kill(entireProcessTree: true); } catch (Exception) { }
+    }
+
+    void LauncherBackToIdleClick(object sender, RoutedEventArgs e)
+    {
+        launchState = LaunchState.Idle;
+        FillChoices();
+    }
+
+    /// (what stopped, for a bug report: the versions, the reason and the last of what the hidden programs said)
+    void LauncherCopyClick(object sender, RoutedEventArgs e)
+    {
+        var said = workLog.ToString();
+        var report = $"Longshot launcher: {work?.StoppedTitle}\nBuilder {Tools.Find()?.Version ?? "from source"}, the folder holds {launchBuilt ?? "no release"}\n" +
+                     $"{workStopped}\n\n{(said.Length > 6000 ? said[^6000..] : said)}";
+        try
+        {
+            Clipboard.SetText(report);
+            LauncherCopy.Content = "Copied";
+        }
+        catch (Exception) { LauncherCopy.Content = "Could not copy"; }   // (the clipboard held by another program)
+    }
+
+    // ---- the builder's own pages, from the launcher and back ----
+
+    bool installerOpened;
+
+    /// "Build from game files", at the foot of the bar: the installer's pages in this window (other game files, where the game
+    /// goes, the options a build has), with the way back in their head
+    async void LauncherBuildClick(object sender, RoutedEventArgs e)
+    {
+        ShowVersions(false, atOnce: true);
+        LauncherWindow(false);
+        Background = Root.Background = (Brush)FindResource("Page");
+        BackToLauncher.Visibility = Visibility.Visible;
+        if (installerOpened) return;
+        installerOpened = true;
+        await OpenInstallerPages(null);
+    }
+
+    void BackToLauncherClick(object sender, RoutedEventArgs e)
+    {
+        if (runner != null) return;   // (a build under way in the installer's pages: it is watched there)
+        LauncherWindow(true);
+        launchBuilt = GameVersion(launchFolder) ?? ReadVersion(launchFolder);
+        FillChoices();
     }
 
     /// (the version under the button, pressed: the folder it is in)
@@ -275,8 +569,9 @@ public partial class MainWindow
     {
         if (open == versionsOpen) return;
         versionsOpen = open;
-        LauncherAll.Visibility = open ? Visibility.Collapsed : Visibility.Visible;
+        ShowPills();
         if (open) VersionBar.Visibility = Visibility.Visible;
+        else if (atOnce) VersionBar.Visibility = Visibility.Collapsed;
         if (atOnce) return;
         var time = TimeSpan.FromMilliseconds(open ? 200 : 150);
         var away = -Math.Max(240, VersionBar.ActualWidth);

@@ -89,7 +89,62 @@ static class Program
         Require(LaunchList.IsRelease("v1.0.0") && LaunchList.IsRelease("2.0.14") && LaunchList.IsRelease("v2.2.0-rc.1")
                 && !LaunchList.IsRelease("pre-1.1.0 6353e9b") && !LaunchList.IsRelease("dev 86148ce") && !LaunchList.IsRelease("main"), "what a release's tag is");
 
-        Console.WriteLine($"launcher list: {checks} checks passed");
+        var lists = checks;
+        Work();
+        Console.WriteLine($"launcher list: {lists} checks passed; launcher work: {checks - lists} checks passed");
         return 0;
+    }
+
+    /// What the launcher says while it brings a version (builder/HookshotBuilder/LaunchWork.cs), from the lines of the hidden
+    /// programs that do it: the setup's engine mode (builder/setup/setup.c), then that version's make_game.py
+    static void Work()
+    {
+        static void Feed(LaunchWork w, params string[] lines) { foreach (var l in lines) w.Line(l); }
+
+        // ---- a version whose builder is downloaded first ----
+        var w = new LaunchWork("v2.2.0", ahead: true, fetch: true);
+        Require(w.Title == "Updating to v2.2.0 - 0%" && w.Detail == "Getting its builder", "before a line: " + w.Title + " / " + w.Detail);
+        Feed(w, "@@setup Looking for the Longshot Builder of v2.2.0...", "@@setup Downloading part 1 of 4 (310 MB)...", "@@percent 50");
+        Require(w.Fraction is > 0.014 and < 0.016, $"half of the first of four parts is an eighth of the builder's share: {w.Fraction}");
+        Require(w.Detail == "Getting its builder: downloading part 1 of 4 (310 MB)", "the setup's words, in the launcher's sentence: " + w.Detail);
+        Feed(w, "@@percent 100", "@@setup Unpacking part 1 of 4...", "@@setup Part 2 of 4 unchanged: kept from the installed version");
+        Require(w.Fraction is > 0.029 and < 0.031, $"the second part begun: {w.Fraction}");
+        Feed(w, "@@percent 20");   // (a late line of the part before must not move it back)
+        var before = w.Fraction;
+        Feed(w, "@@setup Downloading part 1 of 4 (310 MB)...", "@@percent 0");
+        Require(w.Fraction >= before, "the number never goes back");
+        Feed(w, "@@installed v2.2.0");
+        Require(Math.Abs(w.Fraction - 0.12) < 1e-9, $"the builder is here: its whole share, {w.Fraction}");
+        Feed(w, "@@stage read", "@@stage lift", "@@progress 0.5");
+        Require(Math.Abs(w.Fraction - (0.12 + 0.88 * (0.05 + 0.15 * 0.5))) < 1e-9, $"make_game.py's stages fill the rest: {w.Fraction}");
+        Require(w.Detail == "Translating the game to PC code", w.Detail);
+        Feed(w, "@@percent 99");
+        Require(Math.Abs(w.Fraction - (0.12 + 0.88 * 0.125)) < 1e-9, "the setup's percent means nothing once the build runs");
+        Feed(w, "@@stage compile", "@@plan 8 516", "@@file a.c 3 new", "@@file b.c 4 again", "@@file c.c 1 kept", "@@progress 0.25", "@@eta 190");
+        Require(w.Detail == "Compiling changed files (2 of 8) · about 3 minutes left", w.Detail);
+        Require(w.Title == $"Updating to v2.2.0 - {(int)((0.12 + 0.88 * (0.20 + 0.76 * 0.25)) * 100)}%", w.Title);
+        Require(w.Done == null && w.Error == null, "not done, no error");
+        Feed(w, "@@stage finish", @"@@done C:\Games\Longshot");
+        Require(w.Done == @"C:\Games\Longshot" && w.Fraction > 0.96, "done, and the folder it says");
+
+        // ---- one whose builder is here: the build is the whole of it; a switch back says so ----
+        w = new LaunchWork("v2.0.14", ahead: false, fetch: false);
+        Require(w.Title == "Switching to v2.0.14 - 0%" && w.Detail == "Starting", w.Title + " / " + w.Detail);
+        Feed(w, "@@stage compile", "@@progress 0.5");
+        Require(Math.Abs(w.Fraction - (0.20 + 0.38)) < 1e-9, $"no share kept for a download: {w.Fraction}");
+        Require(w.Detail == "Compiling changed files", "no count and no time until the tools give them: " + w.Detail);
+        Feed(w, "@@eta 20");
+        Require(w.Detail == "Compiling changed files · less than a minute left", w.Detail);
+        Feed(w, "@@error The compiler stopped on src_4.c.");
+        Require(w.Error == "The compiler stopped on src_4.c." && w.Done == null && w.StoppedTitle == "The switch to v2.0.14 stopped", "why it stopped, and what the launcher calls it");
+        Require(new LaunchWork("v2.2.0", true, true).StoppedTitle == "The update to v2.2.0 stopped", "an update that stopped");
+
+        // ---- tools that say what this launcher does not know (a later version's, an older one's) ----
+        w = new LaunchWork("v3.0.0", ahead: true, fetch: false);
+        Feed(w, "@@stage lift", "@@progress 1", "@@stage shaders", "@@progress 0.5", "@@whatever 12", "plain words from a compiler", "@@progress nonsense");
+        Require(Math.Abs(w.Fraction - 0.20) < 1e-9 && w.Detail == "Working", $"an unknown stage moves nothing and has plain words: {w.Fraction}, {w.Detail}");
+        Feed(w, "@@stage finish", "@@done X");
+        Require(w.Fraction >= 0.96 && w.Done == "X", "and the build still ends");
+        Require(LaunchWork.TimeLeft(100) == "about 2 minutes left" && LaunchWork.TimeLeft(60) == "about a minute left" && LaunchWork.TimeLeft(4000) == "about 1 h 7 min left", "time left, in words");
     }
 }
