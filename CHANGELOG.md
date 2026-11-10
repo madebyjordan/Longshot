@@ -13,7 +13,7 @@ Hookshot v2.0.5".
 - **AMD FSR 4** and **AMD FSR 4 Native AA** in the Graphics tab's **Upscaler** row: AMD's temporal upscaler in place of
   the game's own, on the same inputs as DLSS (Hookshot PR #1008 by madebyjordan, not yet in Hookshot). Tick **AMD FSR 4**
   in Longshot Builder, or `make_game.py --fsr`; AMD's DLLs are not included. See
-  [docs/hookshot-readme.md](docs/hookshot-readme.md#build-from-source). Tested: pending.
+  [docs/hookshot-readme.md](docs/hookshot-readme.md#build-from-source). Tested: the PR #1008 build on several players' PCs, among them an RX 6700 XT (FSR 4.1.2).
 
 ### Fixes
 - Night no longer looks like day: the sky's ambient light (a float add through a `c1` offset) is written again, so the
