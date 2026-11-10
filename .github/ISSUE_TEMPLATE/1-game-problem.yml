@@ -6,14 +6,14 @@ body:
     attributes:
       value: |
         Thanks for testing. Before you start:
-        - **Check the [newest release](https://github.com/NotRexed/Hookshot/releases/latest) first.** Every release includes all the fixes before it, and yours may already be fixed.
+        - **Check the [newest release](https://github.com/madebyjordan/longshot/releases/latest) first.** Every release includes all the fixes before it, and yours may already be fixed.
         - **Search the open issues.** If yours is there, add your details to it instead.
         - English, please.
         - **Never attach game files**: no hookshot.exe, image.bin, the `.bin` caches, romfs or exefs files, keys or saves.
   - type: input
     id: version
     attributes:
-      label: Hookshot version
+      label: Longshot version
       description: The version you built (such as `v2.0.0`, shown by the launcher and on the Releases page), or the first line of `hookshot_log.txt` if it starts with `hookshot`.
       placeholder: v2.0.0
     validations:
@@ -78,7 +78,7 @@ body:
     id: injectors
     attributes:
       label: Other software hooked into the game
-      description: ReShade, shader-cache tools (SCSKiller and the like), overlays or frame-generation injectors change what Hookshot does. Please test without them before reporting.
+      description: ReShade, shader-cache tools (SCSKiller and the like), overlays or frame-generation injectors change what Longshot does. Please test without them before reporting.
       options:
         - No, nothing hooked in
         - Yes (named under "Changes from the defaults")

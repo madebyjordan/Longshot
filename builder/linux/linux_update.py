@@ -12,6 +12,7 @@ is copied from the builder that is running now (the mounted AppImage, or the ver
 """
 import hashlib
 import os
+import re
 import shutil
 import stat
 import time
@@ -78,16 +79,40 @@ def parse_list(text):
     return Manifest(tag, parts)
 
 
+def release_key(tag):
+    """A version to compare: a release tag (v2.0.5, v2.1.0-rc.1) or git describe's v2.0.5-3-g1a2b3c4[-dirty] (a build from
+    the Actions tab or a checkout: after v2.0.5, before any later release). None for a build that names no release: a bare
+    commit (digits alone too: no v and no dot), dev, or no version at all."""
+    m = re.match(r"^(?=v|\d+\.)v?(\d+(?:\.\d+)*)(?:-(?!\d+-g|dirty$)([0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*))?(-\d+-g[0-9a-f]+)?(-dirty)?$",
+                 (tag or "").strip())
+    if not m:
+        return None
+    # (a prerelease before its release; commits after a tag, or changes to it, after that tag and before the next)
+    return tuple(int(n) for n in m.group(1).split(".")), m.group(2) is None, bool(m.group(3) or m.group(4))
+
+
+def update_target(latest, tools):
+    """The newest version this builder knows of: the latest release when it is newer than these tools, else the tools'
+    own. (issue 902) Any version other than the latest release was made to update before it could build, so a test
+    build from the Actions tab, newer than the release, was taken back to it. One made after an older release is still
+    offered the newer one."""
+    if not latest or not tools:
+        return latest or tools
+    have, out = release_key(tools), release_key(latest)
+    return latest if have and out and out > have else tools
+
+
 def choose_mode(game, tools, latest, source_picked, kept):
     """What the builder's button does. The same order as the Windows builder (MainWindow.RefreshMode): an older game
     that still has its files is updated, a game at the newest known release is played, and an older builder updates
-    itself before a new build. latest None: GitHub did not answer, so the builder's own version is the newest known."""
-    target = latest or tools
+    itself before a new build. latest None: GitHub did not answer, so the builder's own version is the newest known.
+    Newest is update_target's: a builder that is not an older release is not made to update."""
+    target = update_target(latest, tools)
     if kept and game and target and game != target and not source_picked:
         return "update-game"
     if game and not source_picked:
         return "up-to-date"
-    if latest and tools and tools != latest:
+    if latest and tools and target != tools:
         return "update-builder"
     return "build"
 
@@ -271,6 +296,11 @@ def _safe_name(name):
     return name
 
 
+def _check_part_directory(path):
+    if os.path.realpath(path) != os.path.abspath(path):
+        raise ValueError("the update would write through a symbolic link: %s" % path)
+
+
 def _unpack(data, dest, files):
     os.makedirs(dest, exist_ok=True)
     with zipfile.ZipFile(__import__("io").BytesIO(data)) as zipped:
@@ -281,19 +311,25 @@ def _unpack(data, dest, files):
             if files is not None and name not in files:
                 raise ValueError("the zip has %s, which this part does not list" % name)
             target = os.path.join(dest, name)
-            os.makedirs(os.path.dirname(target), exist_ok=True)
+            parent = os.path.dirname(target)
+            _check_part_directory(parent)
+            os.makedirs(parent, exist_ok=True)
             mode = info.external_attr >> 16
             if stat.S_ISLNK(mode):
                 os.symlink(zipped.read(info).decode("utf-8"), target)
             else:
-                with open(target, "wb") as out:
+                # A part can ship symlinks, but cannot overwrite one (or any earlier entry).
+                with open(target, "xb") as out:
                     out.write(zipped.read(info))
                 if mode & 0o777:
                     os.chmod(target, mode & 0o777)
 
 
 def _place(part, source_root, source, dest_root, get, note):
-    dest = os.path.join(dest_root, part.dest)
+    # Resolve installation parent links without following the staging directory itself.
+    parent, staging = os.path.split(os.path.abspath(dest_root))
+    dest = os.path.join(os.path.realpath(parent), staging, _safe_name(part.dest))
+    _check_part_directory(dest)
     old = source.by_sha(part.sha) if source else None
     src = os.path.join(source_root, part.dest) if old and old.same(part) and source_root else ""
     ready = src and os.path.isdir(src) and (part.files is None or all(
@@ -338,6 +374,8 @@ def install(manifest, source_root, source, note=None, get=None):
     versions = os.path.join(root, "versions")
     dest = os.path.join(versions, manifest.tag)
     partial = dest + ".part"
+    if os.path.islink(partial):
+        raise ValueError("the update staging folder is a symbolic link: %s" % partial)
     if os.path.isdir(partial):
         shutil.rmtree(partial)
     os.makedirs(versions, exist_ok=True)
@@ -385,3 +423,17 @@ def fetch_manifest(get=None):
         with open(override, encoding="utf-8") as handle:
             return parse_list(handle.read())
     return parse_list(get(LATEST_LIST).decode("utf-8"))
+
+
+def startup_manifest(root, get=None):
+    """The list begin_update installs on launch: the latest release, except when these tools ship a list of their own
+    that is that same release and no older than it (a self-contained -rc or Actions tab AppImage). Reinstalling an
+    older release's parts over those tools replaces files the working tools had (issue 990: a -rc shipped
+    gpu/vk/oot_cheat_items.h, the release's zip did not, and every launch lost it). The comparison is update_target's:
+    a builder that is not an older release still updates. A HOOKSHOT_LINUX_LIST is a deliberate override: it wins."""
+    latest = fetch_manifest(get)
+    if not os.environ.get("HOOKSHOT_LINUX_LIST"):
+        own = read_manifest(root)
+        if own and own.tag == tools_tag(root) and update_target(latest.tag, own.tag) == own.tag:
+            return own
+    return latest

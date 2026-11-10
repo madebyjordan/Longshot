@@ -1,11 +1,11 @@
 name: Build problem
-description: Hookshot Builder or make_game.py stops or gives an error
+description: Longshot Builder or make_game.py stops or gives an error
 labels: [bug]
 body:
   - type: markdown
     attributes:
       value: |
-        Before you start: check the [newest release](https://github.com/NotRexed/Hookshot/releases/latest) and the [build requirements](https://github.com/NotRexed/Hookshot#what-you-need) (Visual Studio Build Tools with "Desktop development with C++" and the Windows SDK, about 60 GB free), and search the open issues. English, please. Never attach game files.
+        Before you start: check the [newest release](https://github.com/madebyjordan/longshot/releases/latest) and the [build requirements](https://github.com/madebyjordan/longshot/blob/main/docs/hookshot-readme.md#what-you-need) (Visual Studio Build Tools with "Desktop development with C++" and the Windows SDK, about 60 GB free), and search the open issues. English, please. Never attach game files.
   - type: input
     id: version
     attributes:
@@ -19,7 +19,7 @@ body:
     attributes:
       label: How you built
       options:
-        - Hookshot Builder app (Windows)
+        - Longshot Builder app (Windows)
         - Command line (nx2/make_game.py)
         - Linux AppImage
     validations:
