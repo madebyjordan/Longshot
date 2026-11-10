@@ -63,7 +63,7 @@ your own in `%LOCALAPPDATA%\LongshotBuilder\fonts` is used instead. A commercial
 the repository or the app: its license does not allow passing it on.
 
 The launcher is the one window a player sees. The Longshot Builder opened with nothing asked is the launcher of the game it
-built last (its own pages when there is none yet; from the launcher, **Build from game files** at the foot of the bar opens
+built last, or of one whose own launcher was played from on this PC (its own pages when there is none yet; from the launcher, **Build from game files** at the foot of the bar opens
 them in the same window, with the way back in their head). When the button brings another version, the window stays and
 hidden programs do the work, each a program of its own: the setup in its engine mode (`LongshotBuilder-Setup.exe --engine
 --tag <tag>`, `builder/setup/setup.c`) installs that release's builder beside the one in use, without making it the one in
