@@ -1,0 +1,201 @@
+# Hookshot's main merged into dev, daily (or by hand: Actions > Hookshot into dev > Run workflow). It lives on main because
+# GitHub runs scheduled workflows from the default branch only; it changes dev alone, never main (the published releases).
+#
+# A merge Git makes on its own, or one Claude Code resolves by dev's docs/merging-hookshot.md, is pushed only when the game-free
+# tests fail on nothing that does not also fail on Hookshot's main here. Anything else is not pushed: an issue says why.
+# Claude Code runs only with a repository secret CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) or ANTHROPIC_API_KEY.
+name: Hookshot into dev
+
+on:
+  schedule:
+    - cron: '23 6 * * *'
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: The branch to merge into
+        default: dev
+      dry_run:
+        description: Merge, resolve and test only (no push, no issue)
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+concurrency:
+  group: hookshot-into-dev
+
+jobs:
+  merge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      BRANCH: ${{ inputs.branch || 'dev' }}
+      DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+      HAVE_CLAUDE: ${{ (secrets.CLAUDE_CODE_OAUTH_TOKEN != '' || secrets.ANTHROPIC_API_KEY != '') && '1' || '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.branch || 'dev' }}
+          fetch-depth: 0
+          # (a merge that changes .github/workflows can only be pushed with a token allowed to: the secret, when set)
+          token: ${{ secrets.LONGSHOT_PUSH_TOKEN || github.token }}
+
+      - name: Merge Hookshot's main
+        id: merge
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # (under a name of its own, with no tags: Hookshot's tags would become the version git describe gives)
+          git fetch --no-tags https://github.com/NotRexed/Hookshot.git "+refs/heads/main:refs/hookshot/main"
+          sha=$(git rev-parse --short refs/hookshot/main)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          if git merge-base --is-ancestor refs/hookshot/main HEAD; then
+            echo "$BRANCH already has Hookshot's main ($sha)." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "result=current" >> "$GITHUB_OUTPUT"
+          elif git merge --no-ff --no-edit -m "Merge Hookshot main ($sha) into $BRANCH" refs/hookshot/main; then
+            echo "Hookshot's main ($sha) merges on its own: $(git rev-list --count HEAD^1..HEAD^2) commits." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "result=merged" >> "$GITHUB_OUTPUT"
+          else
+            git diff --name-only --diff-filter=U > "$RUNNER_TEMP/files.txt"
+            { echo "Hookshot's main ($sha) clashes with $BRANCH in $(wc -l < "$RUNNER_TEMP/files.txt") files:"; sed 's/^/- /' "$RUNNER_TEMP/files.txt"; } \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "result=conflict" >> "$GITHUB_OUTPUT"
+            [ -n "$HAVE_CLAUDE" ] || git merge --abort
+          fi
+
+      - name: Set up Python
+        if: steps.merge.outputs.result != 'current'
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+
+      - name: Tools for the tests, and Hookshot's own results
+        if: steps.merge.outputs.result != 'current'
+        run: |
+          set -uo pipefail
+          python -m pip install --disable-pip-version-check --no-deps zstandard==0.25.0
+          sudo apt-get update -qq && sudo apt-get install -y -qq g++ clang spirv-tools
+          # (what fails on Hookshot's main on this runner is not the merge's doing)
+          git worktree add --detach "$RUNNER_TEMP/hookshot" refs/hookshot/main
+          (cd "$RUNNER_TEMP/hookshot" && python -I -B tests/run_all.py > "$RUNNER_TEMP/tests-hookshot.log" 2>&1)
+          grep -E '^FAIL ' "$RUNNER_TEMP/tests-hookshot.log" | awk '{print $3}' | sort -u > "$RUNNER_TEMP/fail-hookshot.txt" || true
+          echo "Hookshot's main here: $(tail -1 "$RUNNER_TEMP/tests-hookshot.log")" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Claude Code resolves the clashes
+        id: claude
+        if: steps.merge.outputs.result == 'conflict' && env.HAVE_CLAUDE == '1'
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SHA: ${{ steps.merge.outputs.sha }}
+        run: |
+          set -uo pipefail
+          npm install -g --silent @anthropic-ai/claude-code
+          cat > "$RUNNER_TEMP/prompt.md" <<EOF
+          You are finishing a merge of Hookshot's main (refs/hookshot/main, $SHA) into Longshot's $BRANCH branch, in this
+          checkout. Git stopped with conflicts in the files listed in $RUNNER_TEMP/files.txt.
+
+          Resolve every conflict by the rules in docs/merging-hookshot.md (read it first, all of it). Then:
+          - make sure no file holds conflict markers and nothing is left unmerged;
+          - run \`python -I -B tests/run_all.py\` and fix what the merge broke, until it fails on nothing that is not also in
+            $RUNNER_TEMP/fail-hookshot.txt (what fails on Hookshot's main on this machine);
+          - commit the merge with the message "Merge Hookshot main ($SHA) into $BRANCH", followed by a short account of how
+            each conflicted file was resolved, and "Resolved by Claude Code in CI; not played yet.";
+          - do not push, do not change other branches, do not touch .github/workflows beyond resolving its conflicts.
+          If a conflict cannot be resolved by those rules without guessing at what a player would see, stop without
+          committing and say which file and why. End with a short summary of what you did.
+          EOF
+          claude -p "$(cat "$RUNNER_TEMP/prompt.md")" --dangerously-skip-permissions --max-turns 400 \
+            > "$RUNNER_TEMP/claude.md" 2>&1
+          code=$?
+          { echo "### Claude Code"; echo; cat "$RUNNER_TEMP/claude.md"; } >> "$GITHUB_STEP_SUMMARY"
+          if [ $code -ne 0 ] || [ -f .git/MERGE_HEAD ] || [ -n "$(git diff --name-only --diff-filter=U)" ] \
+             || git grep -qE '^(<<<<<<<|>>>>>>>) ' HEAD -- . ':!*.md'; then
+            echo "Claude Code did not finish the merge." | tee -a "$GITHUB_STEP_SUMMARY"
+            git merge --abort 2>/dev/null; git reset -q --hard "@{u}" 2>/dev/null || true
+            echo "resolved=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "resolved=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: The tests on the merge
+        id: tests
+        if: steps.merge.outputs.result == 'merged' || steps.claude.outputs.resolved == '1'
+        run: |
+          set -uo pipefail
+          python -I -B tests/run_all.py > "$RUNNER_TEMP/tests-merge.log" 2>&1
+          grep -E '^FAIL ' "$RUNNER_TEMP/tests-merge.log" | awk '{print $3}' | sort -u > "$RUNNER_TEMP/fail-merge.txt" || true
+          comm -13 "$RUNNER_TEMP/fail-hookshot.txt" "$RUNNER_TEMP/fail-merge.txt" > "$RUNNER_TEMP/files.txt"
+          echo "The merge here: $(tail -1 "$RUNNER_TEMP/tests-merge.log")" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ -s "$RUNNER_TEMP/files.txt" ]; then
+            { echo "Failing on the merge and not on Hookshot's main:"; sed 's/^/- /' "$RUNNER_TEMP/files.txt"; } | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "ok=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push
+        id: push
+        if: steps.tests.outputs.ok == '1' && env.DRY_RUN != '1'
+        run: |
+          set -euo pipefail
+          if git push origin "HEAD:$BRANCH"; then
+            echo "$BRANCH is now $(git rev-parse --short HEAD)." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "pushed=1" >> "$GITHUB_OUTPUT"
+          else
+            git diff --name-only HEAD^1 HEAD -- .github/workflows > "$RUNNER_TEMP/files.txt"
+            echo "The push was refused: the merge changes workflow files, and LONGSHOT_PUSH_TOKEN is not set." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "refused=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checks on the new dev
+        if: steps.push.outputs.pushed == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # (a push by the job's own token starts no workflow: they are asked for)
+          gh workflow run source-regressions.yml --ref "$BRANCH" || true
+          gh workflow run windows-builder.yml --ref "$BRANCH" || true
+
+      - name: An issue when it needs a hand
+        if: >-
+          !cancelled() && env.DRY_RUN != '1' && (
+            (steps.merge.outputs.result == 'conflict' && steps.claude.outputs.resolved != '1') ||
+            steps.tests.outputs.ok == '0' || steps.push.outputs.refused == '1')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.merge.outputs.sha }}
+          WHY: >-
+            ${{ steps.push.outputs.refused == '1' && 'refused' || steps.tests.outputs.ok == '0' && 'tests' ||
+                env.HAVE_CLAUDE == '1' && 'claude' || 'conflict' }}
+        run: |
+          set -euo pipefail
+          title="Hookshot main ($SHA) needs merging into $BRANCH by hand"
+          if [ -n "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[].number')" ]; then
+            echo "The issue is open already."
+          else
+            {
+              echo "The daily merge of Hookshot's main ($SHA) into \`$BRANCH\` stopped. Nothing was pushed."
+              echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+              echo
+              case "$WHY" in
+                refused) echo "It merged and passed the tests, but it changes workflow files, which this job's token may not"
+                         echo "push. Add a repository secret \`LONGSHOT_PUSH_TOKEN\` (a token with the workflow scope). The files:" ;;
+                tests)   echo "It merged, but these tests fail on it and not on Hookshot's main:" ;;
+                claude)  echo "Claude Code could not finish it (its account is in the run's summary). The clashing files:" ;;
+                *)       echo "Git could not merge these files on its own, and Claude Code is not set up"
+                         echo "(a repository secret \`CLAUDE_CODE_OAUTH_TOKEN\`, from \`claude setup-token\`):" ;;
+              esac
+              echo
+              sed 's/^/- `/; s/$/`/' "$RUNNER_TEMP/files.txt"
+              echo
+              echo "By hand, by \`docs/merging-hookshot.md\` on \`$BRANCH\`."
+            } > "$RUNNER_TEMP/body.md"
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          fi
+          exit 1   # (a failed run: GitHub mails it)
