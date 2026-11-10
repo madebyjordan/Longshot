@@ -3,7 +3,7 @@
 Longshot's releases. Versions follow [Semantic Versioning](https://semver.org/): patch = fixes, minor = features,
 major = changes to saves, settings or the build. Hookshot's history up to v2.0.5 is in [changelog.txt](changelog.txt).
 
-## 1.0.0 (unreleased)
+## 1.0.0 (2026-11-10)
 
 Based on Hookshot v2.0.5 (`232eecb`).
 
