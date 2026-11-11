@@ -88,7 +88,17 @@ if argv[:2] == ["release", "view"]:
     rs = [r for r in s["releases"] if r["tag_name"] == tag and not r["draft"]]
     if not rs:
         fail(404, "release not found")
-    out({"body": rs[0]["body"]}, argv[argv.index("--jq") + 1] if "--jq" in argv else None)
+    out({"body": rs[0]["body"], "assets": [asset(a) for a in rs[0]["assets"]]},
+        argv[argv.index("--jq") + 1] if "--jq" in argv else None)
+    save()
+    sys.exit(0)
+if argv[:2] == ["release", "edit"]:   # (the nightly's title and notes: nothing the checks read)
+    save()
+    sys.exit(0)
+if argv[:2] == ["release", "delete-asset"]:
+    for r in s["releases"]:
+        if r["tag_name"] == argv[2]:
+            r["assets"] = [a for a in r["assets"] if a["name"] != argv[3]]
     save()
     sys.exit(0)
 assert argv[0] == "api", argv
@@ -177,6 +187,8 @@ elif p == ["git", "refs"] and method == "POST":
     s["tags"][fields["ref"].removeprefix("refs/tags/")] = fields["sha"]
 elif p == ["commits", "main"]:
     out({"sha": s["main"]}, jq)
+elif p[0] == "commits":   # (a commit's date, for the nightly's notes)
+    out({"sha": p[1], "commit": {"committer": {"date": "2026-11-11T12:00:00Z"}}}, jq)
 elif p[0] == "compare":
     out({"status": "ahead"}, jq)
 elif p[:2] == ["actions", "runs"]:
@@ -409,6 +421,49 @@ class ReleaseScripts(unittest.TestCase):
         self.assertEqual(body.count("Which file do I download?"), 1)
         self.assertIn("`%s` (the setup and its `recomplauncher.json`) for RecompLauncher" % zip_name, body)
         self.assertLess(body.index("notes"), body.index("Which file do I download?"))
+
+    def test_links_put_the_builders_appimage_first_and_the_launchers_under(self):
+        # (the launcher's AppImage, Hookshot-Launcher-<tag>-x86_64.AppImage, sorts before the builder's: the big Linux link is
+        # still the builder's, and the launcher's files have a line of their own)
+        names = ["Hookshot-Installer.exe", "Hookshot-Launcher-v3.0.0-x86_64.AppImage", "Hookshot-v3.0.0-Windows-x64-portable.zip",
+                 "Hookshot-v3.0.0-x86_64.AppImage", "HookshotBuilder.exe"]
+        self.given([rel(5, "v3.0.0", True, False, assets=names)])
+        r = self.run_script("release_files.sh", "links", "v3.0.0")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        base = "https://github.com/%s/releases/download/v3.0.0/" % REPO
+        self.assertIn("## [⬇ Download for Windows](%sHookshotBuilder.exe)" % base, r.stdout)
+        self.assertIn("## [⬇ Download for Linux / Steam Deck](%sHookshot-v3.0.0-x86_64.AppImage)" % base, r.stdout)
+        self.assertIn("The Hookshot launcher: [Windows](%sHookshot-Installer.exe) · [Linux / Steam Deck](%s"
+                      "Hookshot-Launcher-v3.0.0-x86_64.AppImage)" % (base, base), r.stdout)
+        table = self.run_script("release_files.sh", "table", "v3.0.0").stdout
+        for name in ("`Hookshot-Installer.exe`", "`Hookshot-v3.0.0-Windows-x64-portable.zip`", "`Hookshot-Launcher-v3.0.0-x86_64.AppImage`"):
+            self.assertIn(name, table)
+
+    def test_the_nightly_keeps_the_builders_and_the_launchers_files_apart(self):
+        # (each workflow's upload removes its own files of an older commit, never the other's: the builder's AppImage pattern
+        # Hookshot-*-x86_64.AppImage also matches the launcher's)
+        old = ["Hookshot-v3.0.0-1-gaaaaaaa-x86_64.AppImage", "Hookshot-v3.0.0-1-gaaaaaaa-x86_64.AppImage.zsync",
+               "Hookshot-Launcher-v3.0.0-1-gaaaaaaa-x86_64.AppImage", "Hookshot-v3.0.0-1-gaaaaaaa-Windows-x64-portable.zip"]
+        self.given([rel(90, "nightly", False, True, assets=old)], tags={"nightly": "e" * 40})
+        names = lambda: sorted(a["name"] for a in self.state()["releases"][0]["assets"] if a["name"] != "SHA256SUMS")
+        for f in self.files.iterdir():
+            f.unlink()
+
+        def upload(*files):
+            for f in self.files.iterdir():
+                f.unlink()
+            for name in files:
+                (self.files / name).write_text("built " + name, encoding="utf-8")
+            r = self.upload("nightly", GITHUB_SHA=COMMIT)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+        upload("Hookshot-Launcher-v3.0.0-2-gbbbbbbb-x86_64.AppImage", "Hookshot-v3.0.0-2-gbbbbbbb-Windows-x64-portable.zip")
+        self.assertEqual(names(), sorted(old[:2] + ["Hookshot-Launcher-v3.0.0-2-gbbbbbbb-x86_64.AppImage",
+                                                    "Hookshot-v3.0.0-2-gbbbbbbb-Windows-x64-portable.zip"]))
+        upload("Hookshot-v3.0.0-2-gbbbbbbb-x86_64.AppImage", "Hookshot-v3.0.0-2-gbbbbbbb-x86_64.AppImage.zsync")
+        self.assertEqual(names(), sorted(["Hookshot-v3.0.0-2-gbbbbbbb-x86_64.AppImage", "Hookshot-v3.0.0-2-gbbbbbbb-x86_64.AppImage.zsync",
+                                          "Hookshot-Launcher-v3.0.0-2-gbbbbbbb-x86_64.AppImage",
+                                          "Hookshot-v3.0.0-2-gbbbbbbb-Windows-x64-portable.zip"]))
 
     def test_publish_refuses_a_rolling_release(self):
         for tag in ("rc", "nightly"):

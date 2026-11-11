@@ -66,15 +66,20 @@ $("$files" table nightly)"
     "$files" upload nightly "$@"
     new=()
     for f in "$@"; do new+=("$(basename "$f")"); done
-    # (the AppImage and its .zsync, or the RecompLauncher zip, of an older commit, once this run has uploaded the new ones)
+    # (the AppImage and its .zsync, or the RecompLauncher zip, of an older commit, once this run has uploaded the new ones. The
+    # launcher's AppImage and portable zip (launcher/Hookshot: Hookshot-Launcher-<version>-x86_64.AppImage) the same, apart: an
+    # upload of the launcher's never removes the builder's, nor the other way round)
     gh release view nightly --json assets --jq '.assets[].name' | while read -r old; do
+        mine='^Hookshot-Launcher-'
         case $old in
+            Hookshot-Launcher-*-x86_64.AppImage) want='Hookshot-Launcher-.*-x86_64\.AppImage' mine='^$' ;;
+            Hookshot-*-Windows-x64-portable.zip) want='Hookshot-.*-Windows-x64-portable\.zip' mine='^$' ;;
             Hookshot-*-x86_64.AppImage | Hookshot-*-x86_64.AppImage.zsync) want="Hookshot-.*-x86_64\\.AppImage${old##*.AppImage}" ;;
             Hookshot-*-Windows-x64.zip) want='Hookshot-.*-Windows-x64\.zip' ;;
             *) continue ;;
         esac
         printf '%s\n' "${new[@]}" | grep -qxF "$old" && continue
-        printf '%s\n' "${new[@]}" | grep -qx "$want" || continue
+        printf '%s\n' "${new[@]}" | grep -v "$mine" | grep -qx "$want" || continue
         gh release delete-asset nightly "$old" --yes
     done
     "$files" finish nightly "${RELEASE_SUMS_OUT:-}"

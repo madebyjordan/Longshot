@@ -122,14 +122,27 @@ jobs:
       id-token: write
       attestations: write
 
+  # the Hookshot launcher (launcher/Hookshot): Hookshot-Installer.exe, the portable zip and the launcher's AppImage
+  launcher:
+    needs: [release-please, promote]
+    if: ${{ !cancelled() && (needs.release-please.outputs.created == 'true' || needs.promote.outputs.tag != '') }}
+    uses: ./.github/workflows/launcher.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag || needs.promote.outputs.tag }}
+    # (id-token and attestations: the build provenance of the files)
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+
   # The draft becomes the release players see, with every file attached: the setup and the builder's update check read
   # the latest release's hookshot-setup.txt. Before that, the release gets SHA256SUMS (the SHA-256 of every file, signed
   # like the files) and the "Which file do I download?" table under its notes (scripts/release_files.sh). A release
   # candidate (2.1.0-rc.1) is a prerelease, never "latest"; a promoted version is the latest release. To attach the files
   # again, re-run the failed jobs of this run: the files are replaced.
   publish:
-    needs: [release-please, promote, linux, windows]
-    if: ${{ !cancelled() && needs.linux.result == 'success' && needs.windows.result == 'success' }}
+    needs: [release-please, promote, linux, windows, launcher]
+    if: ${{ !cancelled() && needs.linux.result == 'success' && needs.windows.result == 'success' && needs.launcher.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     # (id-token and attestations: SHA256SUMS's build provenance)
@@ -159,7 +172,8 @@ jobs:
         if: env.WINDOWS_BY_HAND != 'true'
         run: >-
           scripts/release_files.sh check "$TAG" hookshot-linux.txt hookshot-setup.txt HookshotBuilder.exe
-          "Hookshot-$TAG-x86_64.AppImage" "Hookshot-$TAG-x86_64.AppImage.zsync"
+          "Hookshot-$TAG-x86_64.AppImage" "Hookshot-$TAG-x86_64.AppImage.zsync" Hookshot-Installer.exe
+          "Hookshot-$TAG-Windows-x64-portable.zip" "Hookshot-Launcher-$TAG-x86_64.AppImage"
       - if: env.WINDOWS_BY_HAND != 'true'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:

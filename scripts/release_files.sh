@@ -99,9 +99,12 @@ publish() {   # tag -> its release published
 
 table() {
     local appimage="the \`.AppImage\`" zip="the \`-Windows-x64.zip\`"
+    local launcher="the \`Hookshot-Launcher-...-x86_64.AppImage\`" portable="the \`-Windows-x64-portable.zip\`"
     if [[ $1 =~ ^v[0-9] ]]; then
         appimage="\`Hookshot-$1-x86_64.AppImage\`"
         zip="\`Hookshot-$1-Windows-x64.zip\`"
+        launcher="\`Hookshot-Launcher-$1-x86_64.AppImage\`"
+        portable="\`Hookshot-$1-Windows-x64-portable.zip\`"
     fi
     cat <<EOF
 $MARK
@@ -111,21 +114,34 @@ $MARK
 |---|---|
 | Windows | \`HookshotBuilder.exe\`, the setup |
 | Linux, Steam Deck | $appimage |
+| Windows, the Hookshot launcher | \`Hookshot-Installer.exe\` (or $portable, with no install) |
+| Linux, the Hookshot launcher | $launcher |
 
-You need your own copy of the game. \`hookshot-setup.txt\`, \`hookshot-linux.txt\` and the \`.zsync\` are for the updaters, and $zip (the setup and its \`recomplauncher.json\`) for RecompLauncher: on Windows, download \`HookshotBuilder.exe\` instead. To check a download: \`sha256sum -c --ignore-missing SHA256SUMS\`, or \`gh attestation verify <file> -R $GH_REPO\`.
+The Hookshot launcher builds, updates and plays in one window, and downloads each release's builder itself. You need your own copy of the game. \`hookshot-setup.txt\`, \`hookshot-linux.txt\` and the \`.zsync\` are for the updaters, and $zip (the setup and its \`recomplauncher.json\`) for RecompLauncher: on Windows, download \`HookshotBuilder.exe\` instead. To check a download: \`sha256sum -c --ignore-missing SHA256SUMS\`, or \`gh attestation verify <file> -R $GH_REPO\`.
 EOF
 }
 
-links() {   # tag [id] -> big links to the Windows setup and the Linux AppImage on the release (what is there of them)
-    local id=${2:-} names exe appimage base="https://github.com/$GH_REPO/releases/download/$1"
+links() {   # tag [id] -> big links to the Windows setup and the Linux AppImage on the release (what is there of them), the launcher's under
+    local id=${2:-} names exe appimage installer launcher base="https://github.com/$GH_REPO/releases/download/$1"
     [[ -n $id ]] || id=$(id_of "$1")
     names=$(assets "$id" | jq -r '.[].name')
     exe=$(grep -xF HookshotBuilder.exe <<<"$names" || true)
-    appimage=$(grep -E '\.AppImage$' <<<"$names" | head -n1 || true)
-    [[ -n $exe || -n $appimage ]] || return 0
+    # (the builder's AppImage, not the launcher's Hookshot-Launcher-<version>-x86_64.AppImage, which sorts before it)
+    appimage=$(grep -E '\.AppImage$' <<<"$names" | grep -v '^Hookshot-Launcher-' | head -n1 || true)
+    installer=$(grep -xF Hookshot-Installer.exe <<<"$names" || true)
+    launcher=$(grep -E '^Hookshot-Launcher-.*\.AppImage$' <<<"$names" | head -n1 || true)
+    [[ -n $exe || -n $appimage || -n $installer || -n $launcher ]] || return 0
     echo "$LINKS"
     if [[ -n $exe ]]; then echo "## [⬇ Download for Windows]($base/$exe)"; fi
     if [[ -n $appimage ]]; then echo "## [⬇ Download for Linux / Steam Deck]($base/$appimage)"; fi
+    if [[ -n $installer || -n $launcher ]]; then
+        local say="The Hookshot launcher:"
+        if [[ -n $installer ]]; then say+=" [Windows]($base/$installer)"; fi
+        if [[ -n $installer && -n $launcher ]]; then say+=" ·"; fi
+        if [[ -n $launcher ]]; then say+=" [Linux / Steam Deck]($base/$launcher)"; fi
+        echo
+        echo "$say"
+    fi
     echo
     echo '---'
 }

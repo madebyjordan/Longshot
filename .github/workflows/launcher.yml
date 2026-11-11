@@ -3,7 +3,9 @@
 # AppImage, built in Ubuntu 22.04, the oldest system it is for (glibc 2.35, as the Builder's AppImage). Both publish with
 # NativeAOT (launcher/Hookshot/Publish.props) and check what they made: the launcher draws its window with no screen
 # (HOOKSHOT_UI_SHOT) to a 960x640 PNG, with GitHub's releases made up, so no network and no game data is involved. The zip,
-# the AppImage and those PNGs are the run's artifacts. Nothing is released from here yet.
+# the installer, the AppImage and those PNGs are the run's artifacts. For a release (the tag the Release workflow passes when
+# it calls this one) the zip, Hookshot-Installer.exe and the AppImage are also its assets, beside the builder's
+# (scripts/release_upload.sh); a push to main puts them on the nightly prerelease.
 name: Launcher
 
 on:
@@ -50,12 +52,22 @@ on:
       # (the AppImage's appimagetool and runtime are the ones deps.sh pins)
       - 'scripts/linux/deps.sh'
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      tag:
+        description: the release's tag, already created; it is checked out and its release gets the files
+        type: string
+        required: true
 
 permissions:
   contents: read
 
+env:
+  # (the release this run is for: the tag the Release workflow passes; empty on other runs)
+  RELEASE_TAG: ${{ inputs.tag || '' }}
+
 concurrency:
-  group: launcher-${{ github.ref }}
+  group: launcher-${{ inputs.tag || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -70,6 +82,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.tag }}
           # (the version is git describe's: the tags and the history since them)
           fetch-depth: 0
           persist-credentials: false
@@ -91,6 +104,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       # (NativeAOT links with Visual Studio's C++ tools, which this runner has; then the smoke test and the zip)
       - name: Publish, smoke test and zip
+        # (a release's files are named by its tag itself: git describe --long would say v3.0.0-0-g1a2b3c4)
+        env:
+          HOOKSHOT_VERSION: ${{ inputs.tag }}
         run: ./scripts/launcher/publish.ps1
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -126,6 +142,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.tag }}
           fetch-depth: 0
           persist-credentials: false
       - name: Trust the checkout
@@ -140,6 +157,9 @@ jobs:
         run: dotnet run --project launcher/tests/Hookshot.Tests --configuration Release
       # (appimagetool and its runtime at deps.sh's pinned versions and checksums, into build-linux/deps)
       - name: Publish, smoke test and AppImage
+        # (a release's files are named by its tag itself: git describe --long would say v3.0.0-0-g1a2b3c4)
+        env:
+          HOOKSHOT_VERSION: ${{ inputs.tag }}
         run: bash scripts/launcher/publish.sh
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -148,3 +168,46 @@ jobs:
             build/launcher/Hookshot-Launcher-*-x86_64.AppImage
             build/launcher/smoke-*.png
           if-no-files-found: error
+
+  # The zip, the installer and the AppImage to the release the Release workflow is making (its draft: no release is made here),
+  # or, for a push to main, to the nightly prerelease, beside the builder's files (scripts/release_upload.sh: a file of the same
+  # name is replaced; the nightly's launcher files of an older commit go once the new ones are there). Signed as built by this
+  # run: gh attestation verify <file> -R <this repository>
+  release:
+    name: Release assets
+    if: inputs.tag != '' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    needs: [windows, linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_FROM_WORKFLOW: ${{ inputs.tag && 'true' || 'false' }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: Hookshot-launcher-windows
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: Hookshot-launcher-linux-x86_64
+          path: dist
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/Hookshot-Installer.exe
+            dist/Hookshot-*-Windows-x64-portable.zip
+            dist/Hookshot-Launcher-*-x86_64.AppImage
+      - name: To the release
+        run: >-
+          scripts/release_upload.sh "${RELEASE_TAG:-nightly}" dist/Hookshot-Installer.exe dist/Hookshot-*-Windows-x64-portable.zip
+          dist/Hookshot-Launcher-*-x86_64.AppImage
