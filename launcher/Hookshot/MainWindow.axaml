@@ -1,0 +1,120 @@
+<!-- The launcher's main screen (Paper: "Hookshot v2", Launcher): the picture, dim; the wordmark and what the game is; Play (Build
+     while there is no game yet); the version under it; Credits, GitHub and Discord; Menu. The shapes are the WPF launcher's own
+     path data (builder/HookshotBuilder/MainWindow.xaml), so the two draw the same -->
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Hookshot.Launcher.MainWindow" Title="Hookshot" Width="960" Height="640" MinWidth="960" MinHeight="640"
+        Background="#121212" WindowStartupLocation="CenterScreen" Icon="avares://Hookshot/Assets/hookshot.png"
+        RenderOptions.TextRenderingMode="Antialias">
+  <!-- (text smoothed the same way on every system, not by each one's own hinting: the screen is the same picture on Windows and
+       Linux) -->
+  <Window.Resources>
+    <StreamGeometry x:Key="StripShape">M442.631 118.999C448.417 120.005 452.962 121.032 453.489 121.045 454.487 121.07 475.335 122.287 486.302 122.555 492.957 122.718 503.52 122.793 511 122.832 511 122.832 511 209.654 511 209.654 507.192 209.846 503.557 210.032 500.7 210.184 489.689 210.771 468.701 212.289 467.693 212.334 466.816 212.373 448.015 213.053 438.322 213.404 428.277 213.767 422.536 210.245 407.737 214.229 393.317 218.111 390.477 212.062 381.226 212.077 379.3 211.44 377.766 210.981 374.519 210.872 371.312 210.795 368.683 210.668 366.926 210.58 366.565 210.561 366.344 210.703 366.319 210.868 366.299 211 366.404 211.146 366.666 211.24 367.285 211.46 368.092 211.706 369.122 211.973 369.942 212.176 370.856 212.491 371.844 212.858 361.446 214.11 348.69 216.408 348.008 216.433 347.223 216.461 332.4 217.028 322.124 217.407 322.124 217.407 254 217.407 254 217.407 254 217.407 254 118.999 254 118.999 254 118.999 442.631 118.999 442.631 118.999Z</StreamGeometry>
+    <FontFamily x:Key="Serif">avares://Hookshot/Assets/Fonts#Marcellus</FontFamily>
+  </Window.Resources>
+  <Window.Styles>
+    <!-- Play: the torn strip in the accent, lighter under the pointer, darker pressed; at 0.2 while it cannot be pressed -->
+    <Style Selector="Button.strip">
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Panel Name="All">
+            <Path Name="Strip" Stretch="Fill" Fill="#D2823F" Data="{StaticResource StripShape}"/>
+            <ContentPresenter Content="{TemplateBinding Content}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Panel>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="Button.strip:pointerover /template/ Path#Strip"><Setter Property="Fill" Value="#DC9150"/></Style>
+    <Style Selector="Button.strip:pressed /template/ Path#Strip"><Setter Property="Fill" Value="#BF7438"/></Style>
+    <Style Selector="Button.strip:disabled /template/ Panel#All"><Setter Property="Opacity" Value="0.2"/></Style>
+    <!-- a word on the screen that does something (the version under Play, Credits): a soft pill under the pointer -->
+    <Style Selector="Button.word">
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="Box" Background="Transparent" CornerRadius="18" Padding="12,8">
+            <TextBlock Text="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" FontSize="16"/>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="Button.word:pointerover /template/ Border#Box"><Setter Property="Background" Value="#1AFFFFFF"/></Style>
+    <Style Selector="Button.mark">
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <ControlTemplate><ContentPresenter Content="{TemplateBinding Content}"/></ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="Button.menu">
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="#000000" CornerRadius="2" Padding="20,8">
+            <ContentPresenter Content="{TemplateBinding Content}"/>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+  </Window.Styles>
+
+  <Panel ClipToBounds="True">
+    <!-- the picture of the game, dim behind everything (it covers the window, cut evenly at the sides) -->
+    <Image Source="avares://Hookshot/Assets/launcher.jpg" Stretch="UniformToFill" Opacity="0.12" IsHitTestVisible="False"/>
+
+    <!-- the wordmark, in white, and what the game is -->
+    <Viewbox Width="416" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,59,0,0" IsHitTestVisible="False">
+      <Canvas Width="416" Height="63.791">
+        <Canvas.RenderTransform><TranslateTransform X="-368" Y="-53.712"/></Canvas.RenderTransform>
+            <Path Fill="#FFFFFF" Data="F0 M416.399 61.309V110.007L423.2 116.312H396.571L403.277 110.007V88.455H387.759V110.007L394.656 116.312H368.027L374.733 110.007V61.309L368.027 55.006H394.656L387.759 61.309V81.235H403.277V61.309L396.571 55.006H423.2L416.399 61.309Z"/>
+            <Path Fill="#FFFFFF" Data="F0 M449.909 53.379C464.948 53.379 475.197 67.003 475.197 85.71 475.197 104.314 464.948 117.836 449.909 117.836 434.679 117.836 424.526 104.314 424.526 85.71 424.526 67.003 434.679 53.379 449.909 53.379ZM449.909 111.024C456.998 111.024 460.924 103.604 460.924 85.505 460.924 67.511 456.998 60.089 449.909 60.089 442.725 60.089 438.798 67.511 438.798 85.505 438.798 103.604 442.725 111.024 449.909 111.024ZM444.161 85.913L449.909 76.255 455.561 85.913 449.909 95.165 444.161 85.913Z"/>
+            <Path Fill="#FFFFFF" Data="F0 M504.724 53.379C519.763 53.379 530.012 67.003 530.012 85.71 530.012 104.314 519.763 117.836 504.724 117.836 489.495 117.836 479.34 104.314 479.34 85.71 479.34 67.003 489.495 53.379 504.724 53.379ZM504.724 111.024C511.812 111.024 515.739 103.604 515.739 85.505 515.739 67.511 511.812 60.089 504.724 60.089 497.541 60.089 493.613 67.511 493.613 85.505 493.613 103.604 497.541 111.024 504.724 111.024ZM498.978 85.913L504.724 76.255 510.376 85.913 504.724 95.165 498.978 85.913Z"/>
+            <Path Fill="#FFFFFF" Data="F0 M552.423 61.309V110.007L559.319 116.312H531.349L538.151 110.007V61.309L531.349 55.006H559.319L552.423 61.309ZM564.875 81.338L577.518 61.309 585.947 55.106H563.917L568.324 60.496 552.327 85.71 566.12 110.924 562.002 116.312H587.194L580.201 110.007 564.875 81.338Z"/>
+            <Path Fill="#FFFFFF" Data="F0 M613.057 78.695C620.433 82.76 627.33 87.64 627.33 99.435 627.33 110.517 618.231 117.836 607.79 117.836 602.138 117.836 598.212 116.312 594.475 113.769L589.591 117.836 589.495 90.792C595.816 105.127 601.085 110.719 607.215 110.719 611.717 110.719 615.932 107.364 615.932 102.077 615.932 96.385 610.567 93.232 604.245 89.675 597.35 85.81 590.261 81.235 590.261 70.458 590.261 59.581 597.924 53.481 608.269 53.481 612.483 53.481 616.507 54.599 619.571 56.836L624.074 53.379V75.441C620.625 64.258 614.783 60.496 609.035 60.496 603.766 60.496 600.797 62.731 600.797 67.003 600.797 72.188 606.737 75.34 613.057 78.695Z"/>
+            <Path Fill="#FFFFFF" Data="F0 M678.033 61.309V110.007L684.834 116.312H658.205L664.911 110.007V88.455H649.393V110.007L656.29 116.312H629.662L636.367 110.007V61.309L629.662 55.006H656.29L649.393 61.309V81.235H664.911V61.309L658.205 55.006H684.834L678.033 61.309Z"/>
+            <Path Fill="#FFFFFF" Data="F0 M711.543 53.379C726.581 53.379 736.831 67.003 736.831 85.71 736.831 104.314 726.581 117.836 711.543 117.836 696.313 117.836 686.16 104.314 686.16 85.71 686.16 67.003 696.313 53.379 711.543 53.379ZM711.543 111.024C718.632 111.024 722.558 103.604 722.558 85.505 722.558 67.511 718.632 60.089 711.543 60.089 704.359 60.089 700.432 67.511 700.432 85.505 700.432 103.604 704.359 111.024 711.543 111.024ZM705.796 85.913L711.543 76.255 717.194 85.913 711.543 95.165 705.796 85.913Z"/>
+            <Path Fill="#FFFFFF" Data="F0 M776.364 61.309H769.276V110.007L776.077 116.312H748.299L754.909 110.007V61.309H747.916L740.349 80.015V55.006H784.027V80.015L776.364 61.309Z"/>
+      </Canvas>
+    </Viewbox>
+    <TextBlock Text="Ocarina of Time Remake Recomp" FontSize="16" Foreground="#FFFFFF" VerticalAlignment="Top"
+               HorizontalAlignment="Center" Margin="0,137,0,0" IsHitTestVisible="False"/>
+
+    <!-- Play, Build while there is no game yet -->
+    <Button Name="Go" Classes="strip" Width="257" Height="98" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="1,0,0,74"
+            IsDefault="True">
+      <TextBlock Name="GoText" Text="Play" FontFamily="{StaticResource Serif}" FontSize="44" Foreground="#37291D"/>
+    </Button>
+    <Button Name="Version" Classes="word" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,24"/>
+
+    <!-- Menu, at the top left -->
+    <Button Classes="menu" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="16,72,0,0">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Path Data="M3.125,5.625 h13.75 M3.125,10 h13.75 M3.125,14.375 h13.75" Stroke="#FFFFFF" StrokeThickness="1.5"
+              StrokeLineCap="Round" Width="20" Height="20" VerticalAlignment="Center"/>
+        <TextBlock Text="Menu" FontSize="16" Foreground="#FFFFFF" VerticalAlignment="Center"/>
+      </StackPanel>
+    </Button>
+
+    <!-- Credits, GitHub and Discord, at the bottom right -->
+    <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="0,0,24,24">
+      <Button Classes="word" Content="Credits" VerticalAlignment="Center" Margin="0,0,14,0" Tag="https://github.com/NotRexed/Hookshot#credits"/>
+      <Button Classes="mark" Tag="https://github.com/NotRexed/Hookshot" ToolTip.Tip="Hookshot on GitHub">
+        <Canvas Width="32" Height="32">
+          <Path Fill="#FFFFFF" Data="M8 7.757C7.866 7.757 7.757 7.866 7.757 8 7.757 8.107 7.827 8.198 7.923 8.231 7.935 8.232 7.94 8.225 7.94 8.218 7.94 8.213 7.94 8.194 7.94 8.173 7.879 8.184 7.863 8.159 7.858 8.145 7.855 8.138 7.844 8.117 7.833 8.111 7.825 8.106 7.813 8.095 7.832 8.095 7.852 8.094 7.865 8.112 7.87 8.12 7.892 8.156 7.927 8.146 7.941 8.139 7.943 8.123 7.949 8.113 7.957 8.107 7.902 8.101 7.846 8.08 7.846 7.987 7.846 7.96 7.855 7.939 7.871 7.922 7.868 7.916 7.86 7.891 7.873 7.858 7.873 7.858 7.894 7.851 7.94 7.882 7.96 7.877 7.98 7.875 8.001 7.875 8.022 7.875 8.041 7.877 8.061 7.882 8.107 7.851 8.128 7.858 8.128 7.858 8.141 7.891 8.133 7.916 8.131 7.922 8.146 7.939 8.155 7.96 8.155 7.987 8.155 8.08 8.099 8.101 8.044 8.107 8.054 8.115 8.061 8.129 8.061 8.152 8.061 8.184 8.06 8.211 8.06 8.218 8.06 8.225 8.065 8.232 8.077 8.231 8.173 8.198 8.243 8.107 8.243 8 8.243 7.866 8.134 7.757 8 7.757Z" RenderTransformOrigin="0,0">
+            <Path.RenderTransform>
+              <TransformGroup><ScaleTransform ScaleX="64" ScaleY="64"/><TranslateTransform X="-496" Y="-496"/></TransformGroup>
+            </Path.RenderTransform>
+          </Path>
+        </Canvas>
+      </Button>
+      <Button Classes="mark" Margin="10,0,0,0" Tag="https://discord.gg/EajnD2AJD9" ToolTip.Tip="Discord">
+        <Canvas Width="32" Height="32">
+          <Ellipse Canvas.Left="0.154" Canvas.Top="0.154" Width="31.692" Height="31.692" Fill="#5865F2"/>
+          <Path Fill="#FFFFFF" Data="M517.491 506.955a13.067 13.067 0 0 0-3.225-1 0.049 0.049 0 0 0-0.052 0.024 9.102 9.102 0 0 0-0.403 0.826 12.063 12.063 0 0 0-3.622 0 8.349 8.349 0 0 0-0.408-0.826 0.051 0.051 0 0 0-0.052-0.024A13.03 13.03 0 0 0 506.505 506.955a0.046 0.046 0 0 0-0.022 0.019c-2.054 3.069-2.617 6.063-2.341 9.019a0.054 0.054 0 0 0 0.021 0.037 13.141 13.141 0 0 0 3.957 2 0.051 0.051 0 0 0 0.056-0.018 9.392 9.392 0 0 0 0.809-1.317 0.05 0.05 0 0 0-0.027-0.069 8.654 8.654 0 0 1-1.236-0.589 0.051 0.051 0 0 1-0.005-0.084c0.083-0.062 0.166-0.127 0.245-0.192a0.049 0.049 0 0 1 0.051-0.007c2.593 1.184 5.401 1.184 7.964 0a0.049 0.049 0 0 1 0.052 0.006c0.079 0.065 0.162 0.131 0.247 0.193a0.051 0.051 0 0 1-0.004 0.084 8.12 8.12 0 0 1-1.238 0.589 0.05 0.05 0 0 0-0.027 0.07 10.545 10.545 0 0 0 0.809 1.316 0.05 0.05 0 0 0 0.055 0.019 13.097 13.097 0 0 0 3.962-2.001 0.051 0.051 0 0 0 0.021-0.036c0.33-3.418-0.553-6.387-2.343-9.019a0.04 0.04 0 0 0-0.02-0.02zM509.372 514.193c-0.781 0-1.424-0.717-1.424-1.597s0.631-1.597 1.424-1.597c0.799 0 1.437 0.723 1.424 1.597 0.001 0.88-0.63 1.597-1.424 1.597z m5.266 0c-0.781 0-1.424-0.717-1.424-1.597s0.631-1.597 1.424-1.597c0.799 0 1.437 0.723 1.423 1.597 0 0.88-0.624 1.597-1.423 1.597z" RenderTransformOrigin="0,0">
+            <Path.RenderTransform><TranslateTransform X="-496" Y="-496"/></Path.RenderTransform>
+          </Path>
+        </Canvas>
+      </Button>
+    </StackPanel>
+  </Panel>
+</Window>

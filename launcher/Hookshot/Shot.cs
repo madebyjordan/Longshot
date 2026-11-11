@@ -1,0 +1,21 @@
+using Avalonia.Headless;
+using Avalonia.Threading;
+
+namespace Hookshot.Launcher;
+
+/// (development) The window as Skia draws it, with no screen, to a PNG: for comparing with the design (Paper's "Hookshot v2")
+static class Shot
+{
+    public static int Draw(string folder, string file)
+    {
+        var w = new MainWindow(GameFolder.Read(folder));
+        w.Show();
+        Dispatcher.UIThread.RunJobs();
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+        var frame = w.CaptureRenderedFrame();
+        if (frame == null) return 1;
+        frame.Save(file);
+        w.Close();
+        return 0;
+    }
+}

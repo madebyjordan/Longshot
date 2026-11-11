@@ -1,0 +1,32 @@
+<!-- The Hookshot launcher, one app for Windows and Linux (Avalonia 11.3, which builds with the .NET 8 SDK CI uses: Skia draws it the same on both). It shares the WPF launcher's
+     rules as they are (builder/HookshotBuilder: LaunchList.cs, LaunchWork.cs, GameEnv.cs, ShaderStep.cs) while it takes its place -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Hookshot</AssemblyName>
+    <RootNamespace>Hookshot.Launcher</RootNamespace>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NuGetAudit>false</NuGetAudit>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Headless" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\builder\HookshotBuilder\LaunchList.cs" Link="Shared\LaunchList.cs" />
+    <Compile Include="..\..\builder\HookshotBuilder\LaunchWork.cs" Link="Shared\LaunchWork.cs" />
+    <Compile Include="..\..\builder\HookshotBuilder\GameEnv.cs" Link="Shared\GameEnv.cs" />
+    <Compile Include="..\..\builder\HookshotBuilder\ShaderStep.cs" Link="Shared\ShaderStep.cs" />
+    <AvaloniaResource Include="..\..\builder\HookshotBuilder\Images\launcher.jpg" Link="Assets\launcher.jpg" />
+    <AvaloniaResource Include="..\..\builder\HookshotBuilder\Images\hookshot.png" Link="Assets\hookshot.png" />
+    <AvaloniaResource Include="..\..\builder\HookshotBuilder\Fonts\Marcellus-Regular.ttf" Link="Assets\Fonts\Marcellus-Regular.ttf" />
+  </ItemGroup>
+</Project>
