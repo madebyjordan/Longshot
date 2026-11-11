@@ -161,7 +161,8 @@ static class Builders
     }
 
     /// (Linux: the installed builder's own updater, builder/linux/linux_update.py, asked for one release: its list, checked to be that
-    /// release's, its parts downloaded and checked, the unchanged ones copied from the builder that runs this. Lines as the setup's)
+    /// release's, its parts downloaded and checked, the unchanged ones copied from the builder that runs this. Lines as the setup's.
+    /// Only what every release's linux_update.py has: LIST_NAME, fetch_bytes, parse_list, read_manifest, install)
     const string LinuxInstall = """
 import os, sys
 sys.path.insert(0, sys.argv[1])
@@ -171,7 +172,9 @@ def say(kind, text):
     print(kind + " " + " ".join(str(text).split()), flush=True)
 try:
     say("@@setup", "Looking for the builder of " + tag)
-    m = u.fetch_manifest(tag=tag)
+    # (the release's own list, fetched here: linux_update.py's fetch_manifest takes a tag only in releases after 2.1.0)
+    url = "https://github.com/NotRexed/Hookshot/releases/download/%s/%s" % (tag, u.LIST_NAME)
+    m = u.parse_list(u.fetch_bytes(url, 30).decode("utf-8"), local=False)
     if m.tag != tag:
         raise ValueError("GitHub offered %s, not %s: its download links can lag right after a release. Try again in a few minutes" % (m.tag, tag))
     u.install(m, root, u.read_manifest(root), note=lambda message: say("@@setup", message))
