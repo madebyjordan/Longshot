@@ -22,11 +22,12 @@ sealed class LaunchChoice
     public bool Here { get; init; }            // (on this PC: the release the launch folder holds, or a dev build)
     public bool Reach { get; init; }           // (not here, and the button brings it: its builder is installed, or its release has one)
     public bool Picked { get; set; }
+    public bool Stale { get; set; }            // (a dev build that Update would bring forward: DevState, DevBuild.cs)
     public string Key => Tag != null ? "release:" + Tag : "dev:" + Folder;
 
     // (the row, MainWindow.xaml's VersionRow: no mark means it is here, the arrow that the button brings it, dim that nothing can)
-    public bool Ticked => Picked && Here;
-    public bool Arrow => !Here && Reach;
+    public bool Ticked => Picked && Here && !Stale;
+    public bool Arrow => (!Here && Reach) || Stale;
     public bool Dim => !Here && !Reach && !Picked;
     public string? Tip => Folder ?? (Here ? null : Reach ? "Not on this PC yet" : "Not on this PC, and its release has no builder to download");
 }

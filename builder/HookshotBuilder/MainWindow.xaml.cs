@@ -832,6 +832,15 @@ public partial class MainWindow : Window
         }
     }
 
+    /// (a step of its own around the build's: a dev build's source brought forward before them, its launcher built after)
+    void AddRow(string id, string text, bool first)
+    {
+        var row = new StepRow(text);
+        rows[id] = row;
+        if (first) StageList.Children.Insert(0, row.Root);
+        else StageList.Children.Add(row.Root);
+    }
+
     /// What a line of the build tools means for the steps: the step that begins (the one before it is done), and how many of
     /// the files to compile are. The build here and a version the launcher brings (Launcher.cs) both say these
     void StepsLine(string line)

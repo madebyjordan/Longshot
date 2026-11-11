@@ -635,6 +635,9 @@
           <Button x:Name="StoppedBack" Style="{StaticResource Pill}" Content="Back" Click="StoppedBackClick"/>
           <Button x:Name="LauncherCopy" Style="{StaticResource Pill}" Content="Copy details" Margin="8,0,0,0" Click="StoppedCopyClick"/>
         </StackPanel>
+        <!-- (a dev build that the button would bring up to date first: played as it is) -->
+        <Button x:Name="PlayAsItIs" Style="{StaticResource Pill}" Content="Play as it is" VerticalAlignment="Bottom" HorizontalAlignment="Left"
+                Margin="16,0,0,38" Visibility="Collapsed" Panel.ZIndex="1" Click="PlayAsItIsClick"/>
         <Button x:Name="FilesBack" Style="{StaticResource Pill}" Content="Back" VerticalAlignment="Bottom" HorizontalAlignment="Left"
                 Margin="16,0,0,38" Visibility="Collapsed" Panel.ZIndex="1" Click="BackToLauncherClick"/>
 

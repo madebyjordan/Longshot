@@ -23,7 +23,8 @@ public partial class MainWindow
     string? launchBuilt;                         // (the release the launch folder holds)
     string? launchPick;                          // (the version picked: its key)
     bool launchChecking, launchChecked, menuOpen, olderOpen, stepsHalfWay;
-    enum Go { Play, Bring, None }                // (Bring: the folder is updated or built again to the version picked first)
+    // (Bring: the folder is updated or built again to the version picked first; Renew: the dev build picked is brought up to date)
+    enum Go { Play, Bring, Renew, None }
     Go launchGo;
 
     // (while a version is brought the launcher stays: the programs that do it are hidden, and it says how far they are)
@@ -56,6 +57,7 @@ public partial class MainWindow
         if (preview.Contains("versions")) ShowMenu(true, atOnce: true);
         if (preview.Contains("max")) WindowState = WindowState.Maximized;
         await CheckReleases(say: false);
+        await CheckDev();
         // (development) HOOKSHOT_UI_SHOT=<file.png>: the window as drawn, once the releases are in, and out (the window opens away
         // from the screen and takes no keys, MainWindow's constructor). With go: drawn half way (<file>-working.png) and when
         // what the button started has ended (WorkEnded)
@@ -90,6 +92,7 @@ public partial class MainWindow
         ShowFace(Face.Launcher);
         FillChoices();
         if (check && !launchChecked) _ = CheckReleases(say: false);
+        if (check) _ = CheckDev();
     }
 
     static string? Shot => Environment.GetEnvironmentVariable("HOOKSHOT_UI_SHOT") is { Length: > 0 } file ? file : null;
@@ -110,7 +113,9 @@ public partial class MainWindow
             $"enabled={LauncherGo.IsEnabled}", $"under={LauncherVersion.Content}", $"line={LauncherStatus.Text}", $"menu={menu}",
             $"ready={ReadyBlock.Visibility == Visibility.Visible}", $"files={SourceText.Text}", $"folder={OutPath.Text}",
             $"note={string.Concat(FilesNote.Inlines.OfType<System.Windows.Documents.Run>().Select(r => r.Text))}",
-            $"steps={string.Join(" | ", rows.Values.Select(r => r.Says))}",
+            $"asitis={PlayAsItIs.Visibility == Visibility.Visible}", $"arrows={string.Join(" | ", launchLists?.All.Where(c => c.Arrow).Select(c => c.Label) ?? Array.Empty<string>())}",
+            $"launcher={launcherReady}",
+            $"steps={string.Join(" | ", rows.Values.OrderBy(r => StageList.Children.IndexOf(r.Root)).Select(r => r.Says))}",
         });
     }
 
@@ -150,7 +155,12 @@ public partial class MainWindow
         launchChecking = false;
     }
 
-    async void LauncherCheckClick(object sender, RoutedEventArgs e) => await CheckReleases(say: true);
+    async void LauncherCheckClick(object sender, RoutedEventArgs e)
+    {
+        var dev = CheckDev();   // (the dev builds' source too, while GitHub's releases are asked for)
+        await CheckReleases(say: true);
+        await dev;
+    }
 
     /// (the latest release is ahead of the one this folder holds)
     bool NewerOut() => latestTag != null && launchBuilt != null && IsRelease(launchBuilt) && Newer(latestTag, launchBuilt);
@@ -161,6 +171,8 @@ public partial class MainWindow
     {
         launchLists = Make(launchReleases, latestTag, launchBuilt, InstalledTools().Keys, DevBuilds(launchFolder),
                            GameVersion(launchFolder) != null, launchPick, olderOpen);
+        // (a dev build that Update would bring forward has the arrow, as a release the button brings)
+        foreach (var d in launchLists.Dev) d.Stale = d.Folder != null && DevSays(d.Folder) is { Update: true };
         ReleaseList.ItemsSource = launchLists.Releases;
         PreList.ItemsSource = launchLists.Pre;
         DevList.ItemsSource = launchLists.Dev;
@@ -212,14 +224,22 @@ public partial class MainWindow
         (LauncherStatus.ToolTip, LauncherStatus.IsHitTestVisible, LauncherStatus.Cursor) = (null, false, null);
         var c = Picked;
         var (text, news, verb) = ("", false, "Play");
+        string? tip = null;
         if (c == null)
         {
             launchGo = Go.None;
         }
         else if (c.Folder != null)
         {
+            // (a dev build says what it was built from and whether that is the newest; when it is not, the button brings it
+            // there, and it can still be played as it is, at the bottom left)
             launchGo = File.Exists(GameExe(c.Folder)) ? Go.Play : Go.None;
             text = $"In {System.IO.Path.GetFileName(c.Folder)}, with its own saves and settings";
+            if (DevSays(c.Folder) is { } says)
+            {
+                (text, news, tip) = (says.Line, says.News, says.Tip);
+                if (says.Update) (launchGo, verb) = (Go.Renew, "Update");
+            }
         }
         else if (c.Here)
         {
@@ -252,9 +272,12 @@ public partial class MainWindow
         LauncherVersion.IsHitTestVisible = c != null;
         // (this once, the game the folder holds: that it was just built, and in how long)
         if (readyNote != null && c is { Here: true, Folder: null } && !news) (text, LauncherStatus.ToolTip, LauncherStatus.IsHitTestVisible) = (readyNote, readyTip, true);
+        else if (tip != null) (LauncherStatus.ToolTip, LauncherStatus.IsHitTestVisible) = (tip, true);
         LauncherStatus.Text = text;
         LauncherStatus.Foreground = news ? NewsInk : QuietInk;
-        MenuDot.Visibility = NewerOut() ? Visibility.Visible : Visibility.Collapsed;   // (the dot on Menu: a newer release is in there)
+        // (the dot on Menu: something newer is in there, a release, or a dev build other than the one picked)
+        MenuDot.Visibility = NewerOut() || launchLists?.Dev.Any(d => d.Stale && !d.Picked) == true ? Visibility.Visible : Visibility.Collapsed;
+        ShowPills();
     }
 
     /// The button: the build's own word on a build's screen (MainWindow.xaml.cs), else what the launcher does for the version picked
@@ -269,13 +292,17 @@ public partial class MainWindow
         if (launchState == LaunchState.Working) return;
         if (launchState == LaunchState.Stopped)   // (the button says Retry)
         {
-            if (workTarget != null) StartWork(workTarget);
+            if (workTarget?.Folder != null) StartDevWork(workTarget);
+            else if (workTarget != null) StartWork(workTarget);
             return;
         }
         if (Picked is not { } c) return;
         SaveChoice(launchFolder, c.Key);
         switch (launchGo)
         {
+            case Go.Renew:
+                StartDevWork(c);
+                break;
             case Go.Play:
                 StartGame(c.Folder ?? launchFolder);
                 Application.Current.Shutdown();
@@ -432,7 +459,32 @@ public partial class MainWindow
     void WorkEnded(string? failure)
     {
         (launchRunner, enginePull) = (null, null);
-        if (work?.Done != null)
+        if (work?.Done != null && workTarget?.Folder is { } renewed)
+        {
+            // (a dev build brought up to date: what it and its source say is asked again. A launcher its script built is put
+            // in this one's place as this one closes, and opens again as it was: scripts/install-launcher.ps1)
+            launchState = LaunchState.Idle;
+            devNow.Remove(renewed);
+            if (launcherReady != null && Shot == null && devInfos.TryGetValue(renewed, out var info) && SourceOf(renewed, info) is { } source)
+            {
+                try
+                {
+                    var si = new ProcessStartInfo("powershell.exe") { UseShellExecute = false, CreateNoWindow = true };
+                    foreach (var a in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", System.IO.Path.Combine(source, "scripts", "install-launcher.ps1"),
+                                              "-From", launcherReady, "-To", AppContext.BaseDirectory.TrimEnd('\\'), "-WaitFor", Environment.ProcessId.ToString(),
+                                              "-Relaunch", launchFolder })
+                        si.ArgumentList.Add(a);
+                    Process.Start(si);
+                    Application.Current.Shutdown();
+                    return;
+                }
+                catch (Exception) { }   // (it stays ready where it was built: the next update, or the script by hand, places it)
+            }
+            DevBuilds(launchFolder);   // (what the folder says of itself now)
+            if (Shot == null) _ = CheckDev();
+            else if (devInfos.TryGetValue(renewed, out var fresh)) devNow[renewed] = AskSource(renewed, fresh);   // (development: before it is drawn)
+        }
+        else if (work?.Done != null)
         {
             // (the folder holds the version picked now: what the launcher shows is read again from it)
             launchBuilt = GameVersion(launchFolder) ?? ReadVersion(launchFolder);
@@ -528,8 +580,11 @@ public partial class MainWindow
         LauncherCancel.Visibility = Working ? Visibility.Visible : Visibility.Collapsed;
         LauncherStopped.Visibility = Stopped ? Visibility.Visible : Visibility.Collapsed;
         FilesBack.Visibility = face == Face.Files && launchFolder.Length > 0 && File.Exists(GameExe(launchFolder)) ? Visibility.Visible : Visibility.Collapsed;
+        // (a dev build the button would update first: played as it is from here)
+        PlayAsItIs.Visibility = face == Face.Launcher && launchState == LaunchState.Idle && launchGo == Go.Renew
+                                && Picked?.Folder is { } dev && File.Exists(GameExe(dev)) ? Visibility.Visible : Visibility.Collapsed;
         // (the menu's rows stay clear of them)
-        MenuScroll.Margin = new Thickness(0, 48, 0, Working || Stopped || FilesBack.Visibility == Visibility.Visible ? 90 : 0);
+        MenuScroll.Margin = new Thickness(0, 48, 0, Working || Stopped || FilesBack.Visibility == Visibility.Visible || PlayAsItIs.Visibility == Visibility.Visible ? 90 : 0);
     }
 
     void LauncherCancelClick(object sender, RoutedEventArgs e)
@@ -556,6 +611,7 @@ public partial class MainWindow
         workCancelled = true;
         launchRunner?.Cancel();
         try { enginePull?.Kill(entireProcessTree: true); } catch (Exception) { }
+        try { devRun?.Kill(entireProcessTree: true); } catch (Exception) { }
     }
 
     void LauncherBackToIdleClick(object sender, RoutedEventArgs e)
@@ -715,10 +771,12 @@ public partial class MainWindow
         return found;
     }
 
-    /// Dev builds in the folders beside this one: their hookshot_build.txt says channel=dev (scripts/build-game.ps1)
-    static List<(string Dir, string Build)> DevBuilds(string folder)
+    /// Dev builds in the folders beside this one: their hookshot_build.txt says channel=dev (scripts/build-game.ps1), and what
+    /// each was built from (DevBuild.cs)
+    List<(string Dir, string Build)> DevBuilds(string folder)
     {
         var found = new List<(string, string)>();
+        devInfos.Clear();
         try
         {
             var parent = System.IO.Path.GetDirectoryName(folder);
@@ -726,19 +784,160 @@ public partial class MainWindow
             foreach (var d in Directory.GetDirectories(parent).OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
             {
                 if (string.Equals(d.TrimEnd('\\'), folder.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)) continue;
-                var info = System.IO.Path.Combine(d, "hookshot_build.txt");
-                if (!File.Exists(info) || !File.Exists(GameExe(d))) continue;
-                string? name = null, channel = null;
-                foreach (var line in File.ReadAllLines(info))
-                {
-                    if (line.StartsWith("name=")) name = line[5..].Trim();
-                    else if (line.StartsWith("channel=")) channel = line[8..].Trim();
-                }
-                if (channel == "dev") found.Add((d, name ?? "dev"));
+                var file = System.IO.Path.Combine(d, "hookshot_build.txt");
+                if (!File.Exists(file) || !File.Exists(GameExe(d))) continue;
+                if (DevInfo.Parse(File.ReadAllLines(file)) is not { } info) continue;
+                devInfos[d] = info;
+                found.Add((d, info.Name));
             }
         }
         catch (Exception) { }
         return found;
+    }
+
+    // ---- a dev build: what it was built from, whether that is the newest, and one Update that makes it so (DevBuild.cs) ----
+    // Only where the source it was built from is on this PC: a checkout, as scripts/build-game.ps1 builds from one.
+
+    readonly Dictionary<string, DevInfo> devInfos = new(StringComparer.OrdinalIgnoreCase);       // (each dev build's folder: what it says of itself)
+    readonly Dictionary<string, SourceNow?> devNow = new(StringComparer.OrdinalIgnoreCase);      // (and what its source says now, once asked)
+    bool devChecking;
+    Process? devRun;               // (scripts/dev-update.ps1, hidden)
+    string? launcherReady;         // (the launcher it built, to be put in this one's place as this one closes)
+
+    /// (the commit this launcher was built from: .NET writes it after a + in the product version. A release's has none)
+    static string? LauncherCommit
+    {
+        get
+        {
+            if (Environment.GetEnvironmentVariable("HOOKSHOT_LAUNCHER_COMMIT") is { Length: > 0 } asked) return asked;   // (development)
+            var version = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(
+                typeof(MainWindow).Assembly)?.InformationalVersion ?? "";
+            var at = version.IndexOf('+');
+            return at >= 0 && version.Length - at > 7 ? version[(at + 1)..] : null;
+        }
+    }
+
+    /// (the checkout a dev build was made from: the one it names, else Longshot\worktrees\dev beside the game folders, where
+    /// scripts/build-game.ps1 builds from)
+    static string? SourceOf(string folder, DevInfo info)
+    {
+        var source = info.Source ?? System.IO.Path.Combine(System.IO.Path.GetDirectoryName(folder.TrimEnd('\\')) ?? "", "worktrees", "dev");
+        return File.Exists(System.IO.Path.Combine(source, "nx2", "make_game.py")) ? source : null;
+    }
+
+    static (int Code, string Said) Git(string source, int seconds, params string[] asked)
+    {
+        var si = new ProcessStartInfo("git") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        si.ArgumentList.Add("-C");
+        si.ArgumentList.Add(source);
+        foreach (var a in asked) si.ArgumentList.Add(a);
+        si.Environment["GIT_TERMINAL_PROMPT"] = "0";   // (it asks nobody for a password: it fails, and the line says it could not check)
+        using var p = Process.Start(si)!;
+        p.ErrorDataReceived += (_, _) => { };
+        p.BeginErrorReadLine();
+        var said = p.StandardOutput.ReadToEndAsync();
+        if (!p.WaitForExit(seconds * 1000))
+        {
+            try { p.Kill(entireProcessTree: true); } catch (Exception) { }
+            return (-1, "");
+        }
+        return (p.ExitCode, said.Result.Trim());
+    }
+
+    /// What a dev build's source says now, asked of git (GitHub's dev is fetched: nothing of the checkout itself changes).
+    /// null: no checkout, or no git
+    static SourceNow? AskSource(string folder, DevInfo info)
+    {
+        try
+        {
+            if (SourceOf(folder, info) is not { } source) return null;
+            var (code, head) = Git(source, 10, "rev-parse", "HEAD");
+            if (code != 0 || head.Length < 7) return null;
+            int Lines(params string[] asked) => Git(source, 20, asked) is { Code: 0 } r ? r.Said.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length : 0;
+            int Number(params string[] asked) => Git(source, 20, asked) is { Code: 0 } r && int.TryParse(r.Said, out var n) ? n : -1;
+            var changed = Lines("status", "--porcelain", "--untracked-files=no");
+            var behind = Git(source, 30, "fetch", "--quiet", "origin", "dev").Code == 0 ? Number("rev-list", "--count", "HEAD..origin/dev") : -1;
+            var since = info.Commit != null ? Number("rev-list", "--count", info.Commit + "..HEAD") : -1;
+            // (the launcher against the builder's source as Update would leave it: GitHub's dev when the source can go there)
+            var launcher = false;
+            if (LauncherCommit is { } built)
+            {
+                var to = behind > 0 && changed == 0 ? "origin/dev" : "HEAD";
+                launcher = Git(source, 20, "diff", "--quiet", built, to, "--", "builder/HookshotBuilder", "builder/setup").Code != 0
+                           || Lines("status", "--porcelain", "--untracked-files=no", "--", "builder/HookshotBuilder", "builder/setup") > 0;
+            }
+            return new SourceNow(head, changed, behind, since, launcher, File.Exists(System.IO.Path.Combine(source, "scripts", "dev-update.ps1")));
+        }
+        catch (Exception) { return null; }
+    }
+
+    /// Each dev build's source asked (when the launcher opens, by Check for updates, and after an update)
+    async Task CheckDev()
+    {
+        if (devChecking || devInfos.Count == 0) return;
+        devChecking = true;
+        foreach (var (folder, info) in devInfos.ToList())
+            devNow[folder] = await Task.Run(() => AskSource(folder, info));
+        devChecking = false;
+        if (face == Face.Launcher && launchState == LaunchState.Idle) FillChoices();
+    }
+
+    DevState.Says? DevSays(string folder) =>
+        devInfos.TryGetValue(folder, out var info) ? DevState.Of(info, devNow.GetValueOrDefault(folder), System.IO.Path.GetFileName(folder.TrimEnd('\\'))) : null;
+
+    /// The dev build picked brought up to date: its source's own script (scripts/dev-update.ps1), hidden, brings the source
+    /// forward, builds the game from it and builds this launcher again when the builder changed. The window is the launcher's
+    /// throughout, as when a release is brought; a launcher that was built is put in this one's place as it closes
+    async void StartDevWork(LaunchChoice c)
+    {
+        if (c.Folder == null || !devInfos.TryGetValue(c.Folder, out var info) || SourceOf(c.Folder, info) is not { } source) return;
+        (workTarget, work, workCancelled, workStopped, shotWorking, launcherReady) = (c, new LaunchWork("the dev build", ahead: true, fetch: false, dev: true), false, "", false, null);
+        workLog.Clear();
+        launchState = LaunchState.Working;
+        readyNote = null;
+        ShowDetails(false);
+        MakeRows(update: true, shaders: true, download: false);
+        AddRow("source", "Bring the source forward", first: true);
+        AddRow("launcher", "Build the launcher", first: false);
+        StepsTitle.Text = work.Heading;
+        ShowMenu(false);
+        ShowGo();
+        string? failure = null;
+        try
+        {
+            var si = new ProcessStartInfo("powershell.exe")
+            {
+                UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, StandardOutputEncoding = System.Text.Encoding.UTF8,
+                WorkingDirectory = source,
+            };
+            foreach (var a in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", System.IO.Path.Combine(source, "scripts", "dev-update.ps1"),
+                                      "-Launcher", AppContext.BaseDirectory.TrimEnd('\\') })
+                si.ArgumentList.Add(a);
+            if (LauncherCommit is { } built) { si.ArgumentList.Add("-LauncherCommit"); si.ArgumentList.Add(built); }
+            using var p = Process.Start(si)!;
+            devRun = p;
+            try { p.PriorityClass = ProcessPriorityClass.BelowNormal; } catch (Exception) { }
+            while (await p.StandardOutput.ReadLineAsync() is { } line)
+            {
+                if (line.StartsWith("@@launcher ")) launcherReady = line[11..].Trim();
+                WorkLine(line);
+            }
+            await p.WaitForExitAsync();
+            if (workCancelled) failure = "cancelled";
+            else if (p.ExitCode != 0) failure = work?.Error ?? "The update's script stopped without saying why.";
+        }
+        catch (Exception e) { failure = workCancelled ? "cancelled" : "The update could not be started: " + e.Message; }
+        devRun = null;
+        WorkEnded(failure);
+    }
+
+    /// (a dev build that Update would bring forward, played as it is)
+    void PlayAsItIsClick(object sender, RoutedEventArgs e)
+    {
+        if (Picked is not { Folder: { } folder } c || !File.Exists(GameExe(folder))) return;
+        SaveChoice(launchFolder, c.Key);
+        StartGame(folder);
+        Application.Current.Shutdown();
     }
 
     // ---- the choice, kept per game folder: launcher.json beside the versions ----

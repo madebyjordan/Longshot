@@ -63,7 +63,7 @@ function Engine([string]$tag, [string]$list) {
     $script:code = $LASTEXITCODE
     $said
 }
-$named = "HOOKSHOT_SETUP_BASE", "HOOKSHOT_SETUP_LIST", "HOOKSHOT_LATEST_TAG", "HOOKSHOT_UI_PREVIEW", "HOOKSHOT_UI_SHOT", "HOOKSHOT_KEEP_BUILD_FILES", "FAKE_STEP_MS", "FAKE_FAIL"
+$named = "HOOKSHOT_SETUP_BASE", "HOOKSHOT_SETUP_LIST", "HOOKSHOT_LATEST_TAG", "HOOKSHOT_UI_PREVIEW", "HOOKSHOT_UI_SHOT", "HOOKSHOT_KEEP_BUILD_FILES", "FAKE_STEP_MS", "FAKE_FAIL", "HOOKSHOT_LAUNCHER_COMMIT"
 
 Rig
 $server = Start-Process python -ArgumentList "-I", "-m", "http.server", "$Port", "--bind", "127.0.0.1", "--directory", "`"$Out\www`"" -WindowStyle Hidden -PassThru
@@ -209,6 +209,89 @@ try {
         Check ($drawn -and $s.face -eq "Problem" -and $s.button -eq "Retry" -and $s.under -eq "The build stopped" -and $s.steps -like "*Compile: stopped*") "the screen says so, with Retry ($($s.line))"
         Check (-not (Test-Path "$Out\newgame\hookshot_version.txt")) "and no game was made"
         $env:HOOKSHOT_SETUP_BASE = "$Out\base"
+
+        # ---- a dev build (builder/HookshotBuilder/DevBuild.cs): what the launcher says of it, and its Update, which runs the
+        # source's own scripts/dev-update.ps1 (the real one, here; the build it calls is a stand-in). The source is a made-up
+        # checkout with a made-up GitHub beside it; game-dev was "built" from its first commit ----
+        if (-not (Get-Command git -ErrorAction SilentlyContinue)) { "=== a dev build: not tried (no git) ===" }
+        else {
+            "=== a dev build ==="
+            $src = "$Out\src"; $hub = "$Out\hub.git"; $other = "$Out\other"
+            Remove-Item $src, $hub, $other -Recurse -Force -ErrorAction SilentlyContinue
+            function Commit([string]$at, [string]$file, [string]$what) {
+                New-Item -ItemType Directory -Force (Split-Path (Join-Path $at $file)) | Out-Null
+                Add-Content (Join-Path $at $file) $what -Encoding ascii
+                git -C $at add -A 2>$null | Out-Null
+                git -C $at -c user.name=rig -c user.email=rig@example.invalid commit -q -m $what 2>$null | Out-Null
+                (git -C $at rev-parse HEAD).Trim()
+            }
+            git init -q --bare -b dev $hub 2>$null | Out-Null
+            git init -q -b dev $src 2>$null | Out-Null
+            New-Item -ItemType Directory -Force "$src\scripts", "$src\nx2" | Out-Null
+            Copy-Item "$repo\scripts\dev-update.ps1", "$repo\scripts\install-launcher.ps1" "$src\scripts"
+            Set-Content "$src\nx2\make_game.py" "# the test rig's stand-in" -Encoding ascii
+            # (the stand-in for scripts/build-game.ps1: the build tools' lines, and the folder's own file as the real one writes it)
+            Set-Content "$src\scripts\build-game.ps1" -Encoding ascii -Value @'
+param([string]$Channel, [string]$Longshot = "", [int]$Jobs = 0, [string]$Source = "", [switch]$Lines)
+$out = Join-Path (Split-Path $Source) "game-dev"
+"@@stage read"; Start-Sleep -Milliseconds 200
+"@@stage lift"; "@@progress 1"
+"@@stage compile"; "@@plan 4 516"
+foreach ($i in 1..4) { "@@file src_$i.c 3 new"; "@@progress $($i / 4)"; Start-Sleep -Milliseconds 250 }
+"@@stage finish"
+$commit = (git -C $Source rev-parse HEAD).Trim()
+$changed = @(git -C $Source status --porcelain --untracked-files=no).Count
+[IO.File]::WriteAllLines("$out\hookshot_build.txt", [string[]]@("name=pre-2.1.1 $($commit.Substring(0, 7))", "channel=dev", "commit=$commit", "branch=dev", "changed=$changed", "source=$Source"))
+"@@done $out"
+'@
+            $first = Commit $src "builder/HookshotBuilder/builder.txt" "the builder, as the launcher was built from"
+            git -C $src remote add origin $hub 2>$null | Out-Null
+            git -C $src push -q -u origin dev 2>$null | Out-Null
+            [IO.File]::WriteAllLines("$Out\game-dev\hookshot_build.txt", [string[]]@("name=pre-2.1.1 $($first.Substring(0, 7))", "channel=dev", "commit=$first", "branch=dev", "changed=0", "source=$src"))
+            $env:HOOKSHOT_LAUNCHER_COMMIT = $first
+            $dev = "pick=dev:$Out\game-dev"
+            "--- built from the source's commit, which is GitHub's dev"
+            $drawn = Press "dev-current" "v2.2.0,v2.1.0" $dev ""
+            $s = Says "dev-current"
+            Check ($drawn -and $s.button -eq "Play" -and $s.line -eq "Up to date with dev" -and $s.asitis -eq "False" -and $s.arrows -notlike "*pre-2.1.1*") "it says so, and the button plays it ($($s.under); $($s.line))"
+            "--- GitHub's dev two commits on"
+            git clone -q $hub $other 2>$null | Out-Null
+            Commit $other "notes.txt" "a commit on GitHub" | Out-Null
+            $second = Commit $other "notes.txt" "and another"
+            git -C $other push -q origin dev 2>$null | Out-Null
+            $drawn = Press "dev-behind" "v2.2.0,v2.1.0" $dev ""
+            $s = Says "dev-behind"
+            Check ($drawn -and $s.button -eq "Update" -and $s.line -eq "2 commits behind dev" -and $s.asitis -eq "True" -and $s.arrows -like "*pre-2.1.1*") "it says how far behind, the button says Update, and it can be played as it is ($($s.line))"
+            "--- Update pressed: the source brought forward and the game built from it, by the source's own script"
+            $drawn = Press "dev-update" "v2.2.0,v2.1.0" "$dev,go,steps" ""
+            $s = Says "dev-update-working"
+            Check ($s.state -eq "Working" -and $s.under -like "Updating the dev build - *%" -and $s.menu -eq "steps" -and $s.steps -like "Bring the source forward: done*Compile: now*Build the launcher: to come") "on the way: the strip, and its steps in the menu ($($s.under); $($s.steps))"
+            $s = Says "dev-update"
+            Check ((git -C $src rev-parse HEAD).Trim() -eq $second) "the source is at GitHub's dev"
+            Check ((Get-Content "$Out\game-dev\hookshot_build.txt") -contains "commit=$second") "the folder says it was built from that commit"
+            Check ($drawn -and $s.state -eq "Idle" -and $s.button -eq "Play" -and $s.line -eq "Up to date with dev" -and $s.launcher -eq "") "when it ended: up to date, Play, and no launcher built (the builder's source did not change) ($($s.line))"
+            "--- the builder's own source a commit on, in the source and on GitHub: the build and the launcher are behind it"
+            $third = Commit $src "builder/HookshotBuilder/builder.txt" "the builder changed"
+            git -C $src push -q origin dev 2>$null | Out-Null
+            $drawn = Press "dev-stale" "v2.2.0,v2.1.0" $dev ""
+            $s = Says "dev-stale"
+            Check ($drawn -and $s.button -eq "Update" -and $s.line -eq "The source has 1 newer commit than this build") "it says so ($($s.line))"
+            [IO.File]::WriteAllLines("$Out\game-dev\hookshot_build.txt", [string[]]@("name=pre-2.1.1 $($third.Substring(0, 7))", "channel=dev", "commit=$third", "branch=dev", "changed=0", "source=$src"))
+            $drawn = Press "dev-launcher" "v2.2.0,v2.1.0" $dev ""
+            $s = Says "dev-launcher"
+            Check ($drawn -and $s.button -eq "Update" -and $s.line -like "This build is up to date*the launcher is behind its source") "with the game built from it, the launcher alone is behind ($($s.line))"
+            "--- GitHub's dev ahead, and a file of the source changed and not committed"
+            git -C $other pull -q origin dev 2>$null | Out-Null
+            Commit $other "notes.txt" "one more on GitHub" | Out-Null
+            git -C $other push -q origin dev 2>$null | Out-Null
+            Add-Content "$src\nx2\make_game.py" "# work under way" -Encoding ascii
+            $env:HOOKSHOT_LAUNCHER_COMMIT = $third
+            $drawn = Press "dev-dirty" "v2.2.0,v2.1.0" $dev ""
+            $s = Says "dev-dirty"
+            Check ($drawn -and $s.button -eq "Play" -and $s.line -like "1 commit behind dev*the source has 1 uncommitted change: commit them to update") "it says why it will not pull over it, and the button plays ($($s.line))"
+            Check ((git -C $src rev-parse HEAD).Trim() -eq $third -and (Get-Content "$src\nx2\make_game.py") -contains "# work under way") "nothing of the source was touched"
+            $env:HOOKSHOT_LAUNCHER_COMMIT = ""
+        }
         "pictures: $Out\*.png"
     }
     Check ((Real) -eq $realBefore) "the real install is untouched"

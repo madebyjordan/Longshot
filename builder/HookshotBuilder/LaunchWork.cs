@@ -28,8 +28,12 @@ sealed class LaunchWork
     };
     static readonly Regex PartOf = new(@"[Pp]art (\d+) of (\d+)");
 
+    /// (a dev build's update, scripts/dev-update.ps1: the share kept for what comes after the game is built, the launcher's own
+    /// build. Before it, the source is brought forward, which takes a moment and no share)
+    const double After = 0.10;
+
     readonly string name, verb;
-    readonly bool fetch;
+    readonly bool fetch, dev;
     string? stage;          // (make_game.py's stage now; null while the builder is still being got)
     int part = 1, parts = 1;
     int changed = -1, compiled;
@@ -37,17 +41,20 @@ sealed class LaunchWork
     string says;
 
     /// name: the version, as written ("v2.2.0"); ahead: it is ahead of the one the folder holds (an update), else a switch back;
-    /// fetch: its builder is not on this PC and is downloaded first
-    public LaunchWork(string name, bool ahead, bool fetch)
+    /// fetch: its builder is not on this PC and is downloaded first; dev: a dev build brought up to date from its source
+    /// (the name is then what it is called: "the dev build")
+    public LaunchWork(string name, bool ahead, bool fetch, bool dev = false)
     {
-        (this.name, this.fetch) = (name, fetch);
-        verb = ahead ? "Updating to" : "Switching to";
+        (this.name, this.fetch, this.dev) = (name, fetch, dev);
+        verb = dev ? "Updating" : ahead ? "Updating to" : "Switching to";
         says = fetch ? "Getting its builder" : "Starting";
     }
 
     public double Fraction { get; private set; }
     /// (under the button: "Updating to v2.2.0 - 42%")
     public string Title => $"{verb} {name} - {(int)(Fraction * 100)}%";
+    /// (the menu's heading over the steps: "Updating to v2.2.0")
+    public string Heading => $"{verb} {name}";
     /// (the line under that: "Compiling changed files (7 of 516) · about 3 minutes left")
     public string Detail
     {
@@ -64,7 +71,7 @@ sealed class LaunchWork
     public string? Error { get; private set; }
 
     /// What the stopped state says under the button's "Retry": the version, and the reason in one line
-    public string StoppedTitle => $"The {(verb.StartsWith("Updating") ? "update" : "switch")} to {name} stopped";
+    public string StoppedTitle => dev ? $"The update of {name} stopped" : $"The {(verb.StartsWith("Updating") ? "update" : "switch")} to {name} stopped";
 
     public void Line(string line)
     {
@@ -93,7 +100,13 @@ sealed class LaunchWork
         else if (line.StartsWith("@@stage "))
         {
             stage = line[8..].Trim().Split(' ')[0];
-            if (Stages.TryGetValue(stage, out var s))
+            if (dev && stage == "source") says = "Bringing the source up to date";
+            else if (dev && stage == "launcher")
+            {
+                says = "Building the launcher";
+                Reach(1 - After);
+            }
+            else if (Stages.TryGetValue(stage, out var s))
             {
                 says = s.Says;
                 Reach(Whole(s.From));
@@ -102,7 +115,12 @@ sealed class LaunchWork
         }
         else if (line.StartsWith("@@progress "))
         {
-            if (stage != null && Stages.TryGetValue(stage, out var s)
+            if (dev && stage == "launcher")
+            {
+                if (double.TryParse(line[11..], NumberStyles.Float, CultureInfo.InvariantCulture, out var done))
+                    Reach(1 - After + After * Math.Clamp(done, 0, 1));
+            }
+            else if (stage != null && Stages.TryGetValue(stage, out var s)
                 && double.TryParse(line[11..], NumberStyles.Float, CultureInfo.InvariantCulture, out var f))
                 Reach(Whole(s.From + s.Size * Math.Clamp(f, 0, 1)));
         }
@@ -123,7 +141,7 @@ sealed class LaunchWork
     }
 
     /// (make_game.py's share of the whole: all of it when nothing is downloaded first)
-    double Whole(double f) => fetch ? Fetch + (1 - Fetch) * f : f;
+    double Whole(double f) => dev ? (1 - After) * f : fetch ? Fetch + (1 - Fetch) * f : f;
     void Reach(double f) => Fraction = Math.Max(Fraction, Math.Clamp(f, 0, 1));
 
     public static string TimeLeft(double seconds)

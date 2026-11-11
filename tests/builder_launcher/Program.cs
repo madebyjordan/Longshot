@@ -94,8 +94,85 @@ static class Program
 
         var lists = checks;
         Work();
-        Console.WriteLine($"launcher list: {lists} checks passed; launcher work: {checks - lists} checks passed");
+        var work = checks - lists;
+        Dev();
+        Console.WriteLine($"launcher list: {lists} checks passed; launcher work: {work} checks passed; dev builds: {checks - lists - work} checks passed");
         return 0;
+    }
+
+    /// What the launcher says of a dev build (builder/HookshotBuilder/DevBuild.cs): from what its folder says it was built from
+    /// (scripts/build-game.ps1) and what its source says now
+    static void Dev()
+    {
+        // ---- the folder's own file ----
+        var full = "0123456789abcdef0123456789abcdef01234567";
+        var info = DevInfo.Parse(new[] { "name=pre-1.1.0 0123456", "channel=dev", "commit=" + full, "branch=dev", "changed=0", @"source=C:\Longshot\worktrees\dev", "built=2026-11-11T09:00:00Z" })!;
+        Require(info.Name == "pre-1.1.0 0123456" && info.Commit == full && info.Changed == 0 && info.Source == @"C:\Longshot\worktrees\dev" && info.Branch == "dev", "a dev build's file, read");
+        var old = DevInfo.Parse(new[] { "name=pre-1.1.0 6353e9b", "channel=dev" })!;
+        Require(old.Commit == null && old.Source == null && old.Changed == 0, "one written before the commit was kept has its name alone");
+        Require(DevInfo.Parse(new[] { "name=v1.0.0" }) == null && DevInfo.Parse(new[] { "name=x", "channel=release" }) == null, "not a dev build's");
+        Require(DevInfo.Parse(new[] { "channel=dev", "commit=not a commit", "changed=many" }) is { Commit: null, Changed: 0, Name: "dev" }, "what is not a commit or a number is not taken for one");
+
+        SourceNow Now(int changed = 0, int behind = 0, int since = 0, bool launcher = false, bool can = true, string? head = null) => new(head ?? full, changed, behind, since, launcher, can);
+        DevState.Says Of(DevInfo i, SourceNow? n) => DevState.Of(i, n, "game-dev");
+
+        // ---- no checkout on this PC (or no git): as before, nothing offered ----
+        var s = Of(info, null);
+        Require(s.Line == "In game-dev, with its own saves and settings" && !s.Update && !s.News, "no source here: " + s.Line);
+
+        // ---- the newest ----
+        s = Of(info, Now());
+        Require(s.Line == "Up to date with dev" && !s.Update && !s.News, "the newest: " + s.Line);
+        Require(s.Tip.Contains("Built from 0123456.") && s.Tip.Contains(@"Source: C:\Longshot\worktrees\dev, at 0123456"), "what it was built from, under the pointer: " + s.Tip);
+        s = Of(info, Now(behind: -1));
+        Require(s.Line == "GitHub's dev could not be checked" && !s.Update, "GitHub not reached is not 'up to date': " + s.Line);
+
+        // ---- GitHub's dev is ahead ----
+        s = Of(info, Now(behind: 3));
+        Require(s.Line == "3 commits behind dev" && s.Update && s.News, "behind, and the button brings it: " + s.Line);
+        Require(Of(info, Now(behind: 1)).Line == "1 commit behind dev", "one commit is one commit");
+        s = Of(info, Now(behind: 3, changed: 14));
+        Require(s.Line == "3 commits behind dev · the source has 14 uncommitted changes: commit them to update" && !s.Update && s.News,
+                "behind, with work not committed in the source: said, and nothing is pulled over it: " + s.Line);
+        s = Of(info, Now(behind: 3, changed: 14, since: 2));
+        Require(s.Update, "but what the source already has that the build has not is still built");
+
+        // ---- the source moved on since the build ----
+        s = Of(info, Now(since: 2));
+        Require(s.Line == "The source has 2 newer commits than this build" && s.Update && s.News, s.Line);
+        s = Of(old with { Commit = "abcdef0" }, Now(since: -1));
+        Require(s.Update && s.Line == "The source is not at the commit this was built from", "a commit the source does not know: " + s.Line);
+        Require(!Of(info with { Commit = "0123456" }, Now(since: -1)).Update, "a short commit that is the source's own is the same commit");
+
+        // ---- uncommitted work, with nothing behind ----
+        s = Of(info with { Changed = 14 }, Now(changed: 14));
+        Require(s.Line == "Up to date with dev · built with 14 uncommitted changes" && !s.Update && !s.News, s.Line);
+        Require(s.Tip.Contains("Built from 0123456 with 14 uncommitted changes."), s.Tip);
+        s = Of(info, Now(changed: 2));
+        Require(s.Line == "Up to date with dev · the source has 2 uncommitted changes" && !s.Update, s.Line);
+
+        // ---- the launcher itself ----
+        s = Of(info, Now(launcher: true));
+        Require(s.Line == "This build is up to date · the launcher is behind its source" && s.Update && s.News, s.Line);
+
+        // ---- a source from before it could update itself: said, not offered ----
+        s = Of(info, Now(behind: 3, can: false));
+        Require(!s.Update && s.Line.StartsWith("3 commits behind dev (its source cannot update itself yet"), s.Line);
+
+        // ---- the strip and the two lines while it is brought up to date (LaunchWork.cs, dev) ----
+        var w = new LaunchWork("the dev build", ahead: true, fetch: false, dev: true);
+        Require(w.Title == "Updating the dev build - 0%" && w.Heading == "Updating the dev build", w.Title);
+        foreach (var line in new[] { "@@stage source Bringing the source up to date", "the source was brought forward 3 commit(s), to abcdef0" }) w.Line(line);
+        Require(w.Fraction == 0 && w.Detail == "Bringing the source up to date", "the source takes a moment and no share: " + w.Detail);
+        foreach (var line in new[] { "@@stage compile", "@@progress 0.5" }) w.Line(line);
+        Require(Math.Abs(w.Fraction - 0.9 * (0.20 + 0.35)) < 1e-9, $"the game's build has nine tenths: {w.Fraction}");
+        foreach (var line in new[] { "@@stage shaders", "@@progress 1" }) w.Line(line);
+        Require(Math.Abs(w.Fraction - 0.9) < 1e-9, $"built, with the launcher to come: {w.Fraction}");
+        foreach (var line in new[] { "@@stage launcher Building the launcher", "@@progress 0.8" }) w.Line(line);
+        Require(Math.Abs(w.Fraction - 0.98) < 1e-9 && w.Detail == "Building the launcher", $"the launcher has the last tenth: {w.Fraction}");
+        w.Line(@"@@done C:\Longshot\game-dev");
+        Require(w.Fraction == 1 && w.Done == @"C:\Longshot\game-dev", "done");
+        Require(new LaunchWork("the dev build", true, false, dev: true).StoppedTitle == "The update of the dev build stopped", "and when it stopped");
     }
 
     /// What the launcher says while it brings a version (builder/HookshotBuilder/LaunchWork.cs), from the lines of the hidden

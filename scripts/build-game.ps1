@@ -6,7 +6,13 @@
 #                                                               Longshot Builder's own tools, as its Update does ("v1.0.0")
 #   powershell -File scripts/build-game.ps1 -Channel dev       Longshot\game-dev: Longshot\worktrees\dev as it is checked
 #                                                               out, with AMD FSR 4 ("pre-1.1.0 6353e9b")
-# Options: -Longshot <folder> (the folder holding game\; found from this script's place when left out), -Jobs <n>.
+# Options: -Longshot <folder> (the folder holding game\; found from this script's place when left out), -Jobs <n>,
+# -Source <checkout> (dev: another checkout than Longshot\worktrees\dev), -Lines (the build tools' own lines, @@stage and
+# the rest, as they come: for a program that shows them, scripts/dev-update.ps1 and through it the launcher).
+#
+# A dev build's folder says what it was built from (hookshot_build.txt: its name, the commit, how many files of the
+# checkout were changed and not committed, the checkout), so the launcher can say whether it is the newest and bring it
+# there: scripts/dev-update.ps1.
 #
 # Which build is running: the window's title ("Longshot - pre-1.1.0 6353e9b"), the start-up screen, the Insert menu's heading and
 # the log's first line. A release says its tag ("v1.0.0"); anything else its branch and commit.
@@ -15,7 +21,8 @@
 # once (they are its own after that), and AMD's FSR 4 DLLs linked in from Longshot\fsr4 when they are there (AMD's, never in
 # the repository: the readme's AMD FSR 4 section). A desktop shortcut "Longshot (dev)" starts it. The objects are kept in
 # %LOCALAPPDATA%\LongshotDev, as scripts/build-vk.ps1's: the builder's own (LongshotBuilder) are not touched.
-param([Parameter(Mandatory)][ValidateSet("release", "dev")][string]$Channel, [string]$Longshot = "", [int]$Jobs = 0)
+param([Parameter(Mandatory)][ValidateSet("release", "dev")][string]$Channel, [string]$Longshot = "", [int]$Jobs = 0,
+      [string]$Source = "", [switch]$Lines)
 $ErrorActionPreference = "Stop"
 
 if (-not $Longshot) {   # (this script is in <Longshot>\source\scripts or <Longshot>\worktrees\<name>\scripts)
@@ -49,11 +56,14 @@ if ($Channel -eq "release") {
     $makeArgs = @("--update", $game)
     "release: $game, with the Longshot Builder $($v.Name)'s tools"
 } else {
-    $src = Join-Path $Longshot "worktrees\dev"
+    $src = if ($Source) { $Source } else { Join-Path $Longshot "worktrees\dev" }
     if (-not (Test-Path "$src\nx2\make_game.py")) { throw "No dev checkout at $src (git worktree add ..\worktrees\dev dev, from source\)." }
+    $src = (Resolve-Path $src).Path
     $branch = (git -C $src rev-parse --abbrev-ref HEAD).Trim()
+    $commit = (git -C $src rev-parse HEAD).Trim()
+    $changed = @(git -C $src status --porcelain --untracked-files=no).Count
     if ($branch -ne "dev") { Write-Warning "$src is on '$branch', not dev: the build says so in its name." }
-    if (git -C $src status --porcelain --untracked-files=no) { Write-Warning "$src has changes not committed: the build is named '-dirty'." }
+    if ($changed) { Write-Warning "$src has $changed file(s) changed and not committed: the build is named '-dirty', and the launcher says so." }
     $env:HOOKSHOT_MINGW = Join-Path $tools "llvm-mingw"   # (a checkout has no llvm-mingw of its own)
     $env:RX_CPM = Join-Path $tools "cpm"
     # (the translated code and compiled objects are kept, ~4 GB: make_game deletes them after a build unless asked, and every
@@ -76,7 +86,8 @@ $ErrorActionPreference = "Continue"   # (Windows PowerShell stops on a native pr
 try {
     & $python -I -u -X utf8 nx2/make_game.py @makeArgs @jobArgs --log $log 2>&1 | ForEach-Object {
         $line = "$_"
-        if ($line -match '^@@(stage|error|done) (.*)$') { "  $($matches[1]): $($matches[2])" }
+        if ($Lines) { $line }
+        elseif ($line -match '^@@(stage|error|done) (.*)$') { "  $($matches[1]): $($matches[2])" }
         elseif ($line -match '^version: ') { "  $line" }
     }
     $code = $LASTEXITCODE
@@ -109,6 +120,10 @@ if ($Channel -eq "dev") {
 $name = (Select-String -Path $log -Pattern '^version: (.*)$' | Select-Object -Last 1).Matches.Groups[1].Value
 if ($Channel -eq "dev") {   # (the launcher lists it beside the releases: builder/HookshotBuilder/Launcher.cs)
     $short = if ($name -match '^(.*?) \(source') { $matches[1] } else { $name }
-    Set-Content (Join-Path $out "hookshot_build.txt") @("name=$short", "channel=dev") -Encoding ascii
+    # (what it was built from, for the launcher: builder/HookshotBuilder/DevBuild.cs)
+    # (UTF-8 with no mark before the first line: Windows PowerShell's own UTF-8 writes one, and a folder may have any name)
+    [IO.File]::WriteAllLines((Join-Path $out "hookshot_build.txt"),
+        [string[]]@("name=$short", "channel=dev", "commit=$commit", "branch=$branch", "changed=$changed", "source=$src",
+                    "built=$((Get-Date).ToUniversalTime().ToString('s'))Z"))
 }
 "$Channel built in {0:N0} min: $out, '$name'" -f ((Get-Date) - $t0).TotalMinutes
