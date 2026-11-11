@@ -116,7 +116,14 @@ public partial class MainWindow : Window
         AddHandler(DragDrop.DropEvent, Dropped);
         DragDrop.SetAllowDrop(this, true);
         KeyDown += KeyPressed;
-        Closing += (_, e) => { if (job != null && !closeAsked) { e.Cancel = true; _ = AskClose(); } };
+        // (a controller moves through the window as the arrow keys and Tab do, Input/Gamepad.cs: B goes back, Start opens the menu)
+        if (!Dialog.Headless && Gamepad.Start(this) is { } pad)
+        {
+            pad.Back += Back;
+            pad.Menu += () => ShowMenu(!Bar.IsVisible);
+            Closed += (_, _) => pad.Dispose();
+        }
+        Closing +=(_, e) => { if (job != null && !closeAsked) { e.Cancel = true; _ = AskClose(); } };
 
         // (no game yet: the menu opens on Build; with one, on Releases)
         (folder.HasGame ? TabReleases : TabBuild).IsChecked = true;
@@ -193,19 +200,31 @@ public partial class MainWindow : Window
     {
         if (e.Key == Key.Escape && Bar.IsVisible)
         {
-            if (detailsShown) ShowDetails(false);
-            else ShowMenu(false);
+            Back();
             e.Handled = true;
         }
+    }
+
+    /// (Escape, or a controller's B: the details put away, else the menu closed)
+    void Back()
+    {
+        if (detailsShown) ShowDetails(false);
+        else if (Bar.IsVisible) ShowMenu(false);
     }
 
     // ---- the menu ----
 
     void ShowMenu(bool open)
     {
+        var was = Bar.IsVisible;
         Bar.IsVisible = open;
         MenuButton.IsVisible = !open;
         if (!open) ShowDetails(false);
+        if (was == open || !IsLoaded) return;
+        // (the keyboard's or the controller's place follows: into the panel on the tab shown, back to Play when it closes; a
+        // control hidden with the panel would leave it nowhere)
+        var tab = new[] { TabBuild, TabReleases, TabSettings }.FirstOrDefault(t => t.IsChecked == true) ?? TabBuild;
+        Dispatcher.UIThread.Post(() => (open ? (Control)tab : Go.IsEnabled ? Go : MenuButton).Focus());
     }
 
     void ShowPage()

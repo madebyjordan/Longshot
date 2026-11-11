@@ -32,4 +32,16 @@
     <AvaloniaResource Include="..\..\builder\HookshotBuilder\Images\hookshot.png" Link="Assets\hookshot.png" />
     <AvaloniaResource Include="..\..\builder\HookshotBuilder\Fonts\Marcellus-Regular.ttf" Link="Assets\Fonts\Marcellus-Regular.ttf" />
   </ItemGroup>
+  <!-- Controller support (Input/Gamepad.cs) reads pads through SDL2 (zlib-licensed) from Ultz.Native.SDL, the .NET Foundation's (Silk.NET's)
+       natives-only SDL2 build, no managed code. Package 2.32.10 holds SDL release-2.30.8 for Windows and release-2.32.8 for Linux. Only the
+       target OS's library is copied beside the launcher, none of the package's other platforms; without it there's just no controller support -->
+  <ItemGroup Label="Gamepad">
+    <PackageReference Include="Ultz.Native.SDL" Version="2.32.10" ExcludeAssets="all" PrivateAssets="all" GeneratePathProperty="true" />
+    <Content Include="$(PkgUltz_Native_SDL)/runtimes/win-x64/native/SDL2.dll" Link="SDL2.dll" ExcludeFromSingleFile="true"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"
+             Condition="'$(RuntimeIdentifier)' == 'win-x64' Or ('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows')))" />
+    <Content Include="$(PkgUltz_Native_SDL)/runtimes/linux-x64/native/libSDL2-2.0.so" Link="libSDL2-2.0.so" ExcludeFromSingleFile="true"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"
+             Condition="'$(RuntimeIdentifier)' == 'linux-x64' Or ('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Linux')))" />
+  </ItemGroup>
 </Project>

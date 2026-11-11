@@ -1,0 +1,30 @@
+<!-- Tests for the launcher's controller support (launcher/Hookshot/Input): the input to action mapping, the key presses it makes on a
+     window with no screen (Avalonia.Headless), and SDL2 loading. A console program, no test framework, run with
+       dotnet run (in this folder; exit code 0 = all passed, and with the argument no-sdl it checks a run without SDL2)
+     It compiles the Input files itself rather than referencing the app, so it builds whatever state the rest of the app is in -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Hookshot.Launcher</RootNamespace>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NuGetAudit>false</NuGetAudit>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Headless" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
+    <Compile Include="..\..\Hookshot\Input\*.cs" Link="Input\%(Filename)%(Extension)" />
+  </ItemGroup>
+  <!-- the same SDL2 the launcher ships (see the Gamepad item group in Hookshot.csproj) -->
+  <ItemGroup>
+    <PackageReference Include="Ultz.Native.SDL" Version="2.32.10" ExcludeAssets="all" PrivateAssets="all" GeneratePathProperty="true" />
+    <Content Include="$(PkgUltz_Native_SDL)/runtimes/win-x64/native/SDL2.dll" Link="SDL2.dll" CopyToOutputDirectory="PreserveNewest"
+             Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
+    <Content Include="$(PkgUltz_Native_SDL)/runtimes/linux-x64/native/libSDL2-2.0.so" Link="libSDL2-2.0.so" CopyToOutputDirectory="PreserveNewest"
+             Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
+  </ItemGroup>
+</Project>

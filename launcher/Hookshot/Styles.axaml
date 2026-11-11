@@ -16,6 +16,16 @@
     <Setter Property="TextWrapping" Value="Wrap"/>
   </Style>
 
+  <!-- (the keyboard's or the controller's place: a white line around what it is on, drawn only when it was moved there by a key or
+       a controller, never after a click) -->
+  <Style Selector=":is(Button), ToggleButton, RadioButton, ComboBox, TextBox">
+    <Setter Property="FocusAdorner">
+      <FocusAdornerTemplate>
+        <Border BorderBrush="#FFFFFF" BorderThickness="2" CornerRadius="3" Margin="-3"/>
+      </FocusAdornerTemplate>
+    </Setter>
+  </Style>
+
   <!-- a button of the panel, 38 high with square-ish corners: Build Game, Check for updates, Update Available, the red one of a build or
        update that stopped (Background and Foreground set where it is used) -->
   <Style Selector="Button.block">
