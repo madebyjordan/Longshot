@@ -88,6 +88,9 @@ public partial class MainWindow
         if (OutPath.Text != folder) OutPath.Text = folder;
         launchBuilt = GameVersion(folder) ?? ReadVersion(folder);
         launchPick = pick ?? LastChoice(folder);
+        // (a build's choices may have asked for another update track's newest, OpenFiles and TrackChanged: here the latest is
+        // the latest release, as CheckReleases had it)
+        if (launchReleases.Count > 0) latestTag = launchReleases.FirstOrDefault(r => !r.Pre)?.Tag;
         launchState = LaunchState.Idle;
         ShowFace(Face.Launcher);
         FillChoices();
@@ -139,7 +142,7 @@ public partial class MainWindow
             latest = found.FirstOrDefault(r => !r.Pre)?.Tag;
         }
         else
-            (found, latest) = await Updater.Releases();
+            (found, latest) = await Updater.ReleaseList();
         // (no answer: the releases of the check before stay)
         if (found.Count > 0 || launchReleases.Count == 0) (launchReleases, latestTag) = (found, latest);
         updateTarget = latestTag ?? Tools.Find()?.Version;
@@ -314,7 +317,7 @@ public partial class MainWindow
                 // (a setup from before it could install a version beside this one: the builder's own update, which takes this
                 // builder's place with that version's. The latest release as before; any other by its own tag)
                 readyNote = null;
-                Updater.UpdateFolder(this, launchFolder, c.Tag, fetched: false, exact: !SameTag(c.Tag, latestTag));
+                Updater.UpdateFolder(this, launchFolder, c.Tag, fetched: false, named: !SameTag(c.Tag, latestTag));
                 break;
         }
     }

@@ -35,10 +35,99 @@ static class Updater
         UpdateFolder(w, folder, tag, fetched);
     }
 
+    // ---- the update tracks (the Track menu; by default the track of these tools). host/hos_update.c and
+    // builder/linux/linux_update.py have the same rules ----
+    public const string Release = "release", Candidate = "rc", Nightly = "nightly";
+    const string Releases = "https://api.github.com/repos/madebyjordan/longshot/releases";
+    static readonly System.Text.RegularExpressions.Regex NightlyName = new(@"-\d+-g[0-9a-f]+(-dirty)?$");
+    static readonly System.Text.RegularExpressions.Regex ReleaseName = new(@"^v(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?$");
+
+    /// A build's track from its version: git describe --long's v2.1.0-rc.1-3-g1a2b3c4 is the nightly, v2.1.0-rc.1 a release
+    /// candidate, anything else a release
+    public static string TrackOf(string? version) =>
+        version == null ? Release : NightlyName.IsMatch(version) ? Nightly : ReleaseName.IsMatch(version) && version.Contains('-') ? Candidate : Release;
+
+    /// The release that holds a version's files: the nightly's are on the rolling nightly release
+    static string ReleaseOf(string tag) => TrackOf(tag) == Nightly ? Nightly : tag;
+
+    /// a newer than b, both vX.Y.Z[-rc.N] in semver order (v2.1.0-rc.1 < v2.1.0-rc.2 < v2.1.0); a nightly counts as just after
+    /// the version it names; false when either is not a version
+    public static bool Newer(string? a, string? b)
+    {
+        static long[]? Key(string? v)
+        {
+            if (v == null) return null;
+            var after = NightlyName.Match(v);
+            var m = ReleaseName.Match(after.Success ? v[..after.Index] : v);
+            if (!m.Success) return null;
+            return new[] { long.Parse(m.Groups[1].Value), long.Parse(m.Groups[2].Value), long.Parse(m.Groups[3].Value),
+                           m.Groups[4].Success ? long.Parse(m.Groups[4].Value) : long.MaxValue, after.Success ? 1 : 0 };
+        }
+        var x = Key(a);
+        var y = Key(b);
+        if (x == null || y == null) return false;
+        for (var i = 0; i < x.Length; i++)
+            if (x[i] != y[i]) return x[i] > y[i];
+        return false;
+    }
+
+    /// What to update to: the track's newest (latest) for a release as before, a nightly, or after a switch of track (even
+    /// an older version); for a release candidate only when it is newer, so it is never taken back to an older release
+    public static string? Target(string? latest, string? tools, string track)
+    {
+        if (latest == null) return tools;
+        if (tools == null || track != Candidate || TrackOf(tools) != Candidate) return latest;
+        return Newer(latest, tools) ? latest : tools;
+    }
+
+    /// The newest build of a track, quietly (null: GitHub did not answer). release: the latest release, as before; rc: the
+    /// newest of the release candidates and releases, else the latest release; nightly: the nightly's setup list's tag
+    public static async Task<string?> LatestTag(string track)
+    {
+        if (track == Release) return await LatestTag();
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("LongshotBuilder");
+        if (track == Nightly)
+        {
+            for (var attempt = 0; attempt < 2; attempt++)
+            {
+                try
+                {
+                    var list = await http.GetStringAsync("https://github.com/madebyjordan/longshot/releases/download/nightly/" + SetupList);
+                    foreach (var line in list.Split('\n'))
+                        if (line.StartsWith("tag ")) return line[4..].Trim();
+                }
+                catch (Exception) { }
+                await Task.Delay(TimeSpan.FromSeconds(2));
+            }
+            return null;
+        }
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, Releases + "?per_page=20");
+            request.Headers.Accept.ParseAdd("application/vnd.github+json");
+            using var response = await http.SendAsync(request);
+            if (response.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                string? newest = null;
+                foreach (var r in doc.RootElement.EnumerateArray())
+                    if (r.GetProperty("tag_name").GetString() is { } t && ReleaseName.IsMatch(t) && (newest == null || Newer(t, newest)))
+                        newest = t;
+                if (newest != null) return newest;
+            }
+        }
+        catch (Exception) { }
+        return await LatestTag();
+    }
+
+    /// The API address of the release a target is on: the latest release for a release (as before), else that tag's
+    static string ReleaseApi(string? tag) => tag == null || TrackOf(tag) == Release ? Latest : Releases + "/tags/" + ReleaseOf(tag);
+
     /// (the launcher's bar of versions) Every published release, newest first (its tag, whether it is a pre-release, whether it
     /// holds a builder to download), and the latest one's tag (not a pre-release); empty and null when GitHub did not answer. One
     /// try: the launcher already shows what is on this PC
-    public static async Task<(List<ReleaseInfo> Releases, string? Latest)> Releases()
+    public static async Task<(List<ReleaseInfo> Releases, string? Latest)> ReleaseList()
     {
         var found = new List<ReleaseInfo>();
         string? latest = null;
@@ -46,7 +135,7 @@ static class Updater
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
             http.DefaultRequestHeaders.UserAgent.ParseAdd("LongshotBuilder");
-            using var request = new HttpRequestMessage(HttpMethod.Get, Latest[..Latest.LastIndexOf('/')] + "?per_page=30");
+            using var request = new HttpRequestMessage(HttpMethod.Get, Releases + "?per_page=30");
             request.Headers.Accept.ParseAdd("application/vnd.github+json");
             using var response = await http.SendAsync(request);
             if (response.IsSuccessStatusCode)
@@ -114,16 +203,20 @@ static class Updater
     }
 
     /// The latest release's setup (HookshotBuilder.exe) downloaded and started with args: it installs the new builder (only the
-    /// parts that changed) and starts it with the same args; this one closes. (no args: the new builder opens as it does)
-    public static async Task RunLatestSetup(MainWindow w, IEnumerable<string> args)
+    /// parts that changed) and starts it with the same args; this one closes. (no args: the new builder opens as it does) A tag of
+    /// another track (or a release asked for by a switch of track): that release's setup, told to install it (--tag)
+    public static async Task RunLatestSetup(MainWindow w, IEnumerable<string> args, string? tag = null, bool named = false)
     {
+        if (tag != null && (named || TrackOf(tag) != Release)) args = args.Concat(new[] { "--tag", tag });
+        else tag = null;
         var token = w.DownloadToken;
         using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
         http.DefaultRequestHeaders.UserAgent.ParseAdd("LongshotBuilder");
         w.Note("Asking GitHub for the latest release");
         string? setupUrl = null, setupApiUrl = null, setupDigest = null;
         long setupSize = 0;
-        using (var response = await GetWithRetries(w, http, Latest, token, "application/vnd.github+json", TimeSpan.FromSeconds(30)))
+        using (var response = await GetWithRetries(w, http, tag == null ? Latest : Releases + "/tags/" + ReleaseOf(tag), token,
+                                                   "application/vnd.github+json", TimeSpan.FromSeconds(30)))
         using (var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token)))
             foreach (var asset in doc.RootElement.GetProperty("assets").EnumerateArray())
                 if (asset.GetProperty("name").GetString() == SetupAsset)
@@ -146,12 +239,12 @@ static class Updater
     }
 
     /// The game in folder built again with the latest release: here when these tools are it (or fetched), else after the setup
-    /// installed it (it starts the new builder with --update folder --tag t --fetched). exact (the launcher, for a version picked
-    /// that is not the latest: a pre-release, or a release to go back to): the release named tag instead of the latest. The setup
-    /// installs the release its --tag names and keeps only that one (builder/setup/setup.c)
-    public static async void UpdateFolder(MainWindow w, string folder, string? tag, bool fetched, bool exact = false)
+    /// installed it (it starts the new builder with --update folder --tag t --fetched). named (a switch of track; the launcher, for
+    /// a version picked that is not the latest: a pre-release, or a release to go back to): the release named tag instead of the
+    /// latest. The setup installs the release its --tag names and keeps only that one (builder/setup/setup.c)
+    public static async void UpdateFolder(MainWindow w, string folder, string? tag, bool fetched, bool named = false)
     {
-        exact &= tag != null;
+        named &= tag != null;
         w.BeginUpdate(folder, tag);
         var tools = Tools.Find();
         if (tools == null)
@@ -177,18 +270,20 @@ static class Updater
             var token = w.DownloadToken;
             using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
             http.DefaultRequestHeaders.UserAgent.ParseAdd("LongshotBuilder");
-            w.Note(exact ? $"Asking GitHub for {tag}" : "Asking GitHub for the latest release");
+            w.Note(named ? $"Asking GitHub for {tag}" : "Asking GitHub for the latest release");
             string? newTag = null, url = null, setupUrl = null;
             string? apiUrl = null, setupApiUrl = null;
             string? digest = null, setupDigest = null;
             long size = 0, setupSize = 0;
             var hasList = false;
-            var release = exact ? Latest[..Latest.LastIndexOf('/')] + "/tags/" + Uri.EscapeDataString(tag!) : Latest;
-            var which = exact ? tag! : "The latest release";
-            using (var response = await GetWithRetries(w, http, release, token, "application/vnd.github+json", TimeSpan.FromSeconds(30)))
+            // (another track's build, or one a switch of track asked for: that release; the nightly's is named by its list's tag)
+            var api = named ? Releases + "/tags/" + Uri.EscapeDataString(ReleaseOf(tag!)) : ReleaseApi(tag);
+            var which = api == Latest ? "The latest release" : tag!;
+            using (var response = await GetWithRetries(w, http, api, token, "application/vnd.github+json", TimeSpan.FromSeconds(30)))
             using (var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token)))
             {
                 newTag = doc.RootElement.GetProperty("tag_name").GetString();
+                if (newTag == Nightly && tag != null && TrackOf(tag) == Nightly) newTag = tag;
                 foreach (var asset in doc.RootElement.GetProperty("assets").EnumerateArray())
                 {
                     var assetName = asset.GetProperty("name").GetString();

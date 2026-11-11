@@ -27,10 +27,11 @@ what `main` already brought in.
    - the texture budget (`gpu/vk/vram_squeeze.h`): the cut is only what the blocks' free space cannot take;
    - the start-up screen: the `LONGSHOT` wordmark and the diagnostics lines (`StartupView::diag`);
    - `lists/pipeline_states.bin`, shipped by `nx2/make_game.py` in place of Hookshot's
-     `assets/pipeline_states.bin.xz` when the source has it;
+     merged list (`assets/pipeline_states/`) when the source has it;
    - the night fix (`EDEN_F32_ADD_TRACK`), the AMD terrain re-encode kept on (`RX_VK_UNEVEN_BC`);
    - the launcher and version list in the builder, `scripts/build-game.ps1`, `nx2/version.py`'s dev label.
-4. **readme.md is Longshot's.** Keep dev's side. Hookshot's readme lives on as `docs/hookshot-readme.md`.
+4. **readme.md is Longshot's.** Keep dev's side. Hookshot's readme lives on as `docs/hookshot-readme.md`. The same for
+   `CHANGELOG.md` (Longshot's releases; Hookshot's, which release-please writes, lives on as `docs/hookshot-changelog.md`).
 5. **Tests.** A Hookshot test that checks code Longshot changed is adjusted to Longshot's code, as little as it takes
    (a stand-in for `cache_readonly()` in a fixture, for example). A Longshot test is never deleted to make a merge pass.
 

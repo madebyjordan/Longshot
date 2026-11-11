@@ -740,6 +740,11 @@
                 <!-- AMD FSR 4: off unless picked. Nothing is downloaded: AMD's DLLs are put beside the game by hand (the readme) -->
                 <CheckBox x:Name="FsrTick" Style="{StaticResource MenuTick}" Content="AMD FSR 4" IsChecked="False" Margin="0,4,0,0"
                           ToolTip="For AMD Radeon graphics cards. AMD's files are not included: see the readme. It is chosen in the game's Insert menu, as the Upscaler."/>
+                <!-- (Hookshot's update track, Updater.cs: Release, Release candidate or Nightly; the builder updates from it, saved once
+                     chosen. A row of this menu; not in Paper's drawing. The launcher's own versions are in its bar, by what they are) -->
+                <TextBlock x:Name="TrackLabel" Style="{StaticResource Line}" Text="Updates" Margin="0,40,0,12"/>
+                <ComboBox x:Name="TrackBox" Style="{StaticResource MenuChoice}" Tag="Track: " IsEditable="False" AutomationProperties.Name="Update track"
+                          ToolTip="Release: the tested versions. Release candidate: the next version, to try before it is released. Nightly: the newest development build, updated with every change."/>
               </StackPanel>
 
               <!-- ==== the steps of what is being built or brought, while it is (Paper: "v3 - Building") ==== -->

@@ -69,6 +69,9 @@ public partial class MainWindow : Window
         WorkerBox.SelectedIndex = 0;
         MemoryBox.ItemsSource = BuildMemory.Choices(BuildMemory.TotalGb());
         MemoryBox.SelectedIndex = 0;
+        TrackBox.ItemsSource = TrackNames;
+        TrackBox.SelectedIndex = Array.IndexOf(TrackIds, Track);
+        TrackBox.SelectionChanged += TrackChanged;
         clock.Tick += (_, _) => Tick();
         Drop += Dropped;
         // (its own dark page from the first frame, no grey acrylic before it draws)
@@ -171,9 +174,11 @@ public partial class MainWindow : Window
             if (!go) return;
         }
         CheckAll();
-        // (from the launcher: the latest release is the one it already asked GitHub for)
-        if (first)
-            latestTag = Environment.GetEnvironmentVariable("HOOKSHOT_LATEST_TAG") is { Length: > 0 } fake ? (fake == "none" ? null : fake) : await Updater.LatestTag();
+        // (from the launcher: the latest release is the one it already asked GitHub for. Another update track's newest is asked
+        // for here; the launcher takes its own back, EnterLauncher)
+        var fake = Environment.GetEnvironmentVariable("HOOKSHOT_LATEST_TAG") is { Length: > 0 } tags ? tags : null;
+        if (first) latestTag = fake != null ? (fake == "none" ? null : fake) : await Updater.LatestTag(Track);
+        else if (fake == null && Track != Updater.Release) latestTag = await Updater.LatestTag(Track);
         RefreshMode();
         if (!go) return;
         while (checking) await Task.Delay(100);
@@ -229,10 +234,10 @@ public partial class MainWindow : Window
         var game = OutPath.Text.Length > 2 ? GameVersion(OutPath.Text) : null;
         var builder = Tools.Find()?.Version;
         // (the newest release known: GitHub's, else this builder's own. v2.0.0 took a GitHub that did not answer for "up to date")
-        updateTarget = latestTag ?? builder;
+        updateTarget = Updater.Target(latestTag, builder, Track);
         if (game != null && updateTarget != null && game != updateTarget && !sourcePicked) mode = Mode.UpdateGame;
         else if (game != null && !sourcePicked) mode = Mode.UpToDate;
-        else if (latestTag != null && builder != null && builder != latestTag) mode = Mode.UpdateBuilder;
+        else if (latestTag != null && builder != null && builder != updateTarget) mode = Mode.UpdateBuilder;
         else mode = Mode.Build;
         // (the button's word, what is under it, and the line under the choices that says what the word will do)
         var (word, under) = ("Build", builder ?? "");
@@ -252,7 +257,7 @@ public partial class MainWindow : Window
                 break;
             case Mode.UpdateBuilder:
                 (word, under) = ("Update", "Update the builder first");
-                modeNote = $"Longshot Builder {latestTag} is available (this one is {builder}): update it first, then build.";
+                modeNote = $"Longshot Builder {updateTarget} is available (this one is {builder}): update it first, then build.";
                 break;
             default:
                 if (!SourceReady) under = searching ? "Looking for your game files" : "Pick your game files to build";
@@ -333,6 +338,39 @@ public partial class MainWindow : Window
         Process.Start(si);
     }
 
+    // ---- the update track (Updater.cs): the one chosen in the Track menu, saved; by default these tools' own ----
+    static readonly string[] TrackIds = { Updater.Release, Updater.Candidate, Updater.Nightly };
+    static readonly string[] TrackNames = { "Release", "Release candidate", "Nightly" };
+    string? chosenTrack;
+    string Track
+    {
+        get
+        {
+            if (chosenTrack != null) return chosenTrack;
+            var saved = BuilderSettings.Load(SettingsPath)?.Track;
+            return saved != null && TrackIds.Contains(saved) ? saved : Updater.TrackOf(Tools.Find()?.Version);
+        }
+    }
+    /// (a track other than these tools' own: its newest is installed, even an older version)
+    bool Switching => Track != Updater.TrackOf(Tools.Find()?.Version);
+
+    async void TrackChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (TrackBox.SelectedIndex < 0 || TrackIds[TrackBox.SelectedIndex] == Track) return;
+        chosenTrack = TrackIds[TrackBox.SelectedIndex];
+        SaveSettings();
+        latestTag = null;
+        RefreshMode();
+        latestTag = await Updater.LatestTag(Track);
+        RefreshMode();
+    }
+
+    /// (going to an older version, from another track: asked first)
+    bool OlderOk(string? have) =>
+        !Switching || !Updater.Newer(have, updateTarget) ||
+        MessageBox.Show(this, $"{updateTarget} is older than {have}, the version you have now. Install {updateTarget}?", "Longshot",
+                        MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+
     // ---- what the player chose last time (BuilderSettings.cs): builder-settings.json beside the versions ----
     static string SettingsPath => System.IO.Path.Combine(Storage.Base, "builder-settings.json");
 
@@ -370,7 +408,8 @@ public partial class MainWindow : Window
             var s = new BuilderSettings { Out = OutPath.Text, Nup = romfs == null ? chosenNup : null, Romfs = romfs, Exefs = exefs,
                                           Dlss = DlssTick.IsChecked == true, Fsr = FsrTick.IsChecked == true,
                                           PrepareLater = PrepareTick.IsChecked != true,
-                                          MemoryGb = MemoryBox.SelectedItem is int gb ? gb : null };
+                                          MemoryGb = MemoryBox.SelectedItem is int gb ? gb : null,
+                                          Track = chosenTrack ?? BuilderSettings.Load(SettingsPath)?.Track };
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(SettingsPath)!);
             File.WriteAllText(SettingsPath, System.Text.Json.JsonSerializer.Serialize(s));
         }
@@ -735,18 +774,20 @@ public partial class MainWindow : Window
         switch (mode)
         {
             case Mode.UpdateGame:   // (the kept game files; the newer builder first when this one is older)
+                if (!OlderOk(GameVersion(OutPath.Text))) return;
                 SaveSettings();
-                Updater.UpdateFolder(this, OutPath.Text, updateTarget, fetched: false);
+                Updater.UpdateFolder(this, OutPath.Text, updateTarget, fetched: false, named: Switching);
                 return;
             case Mode.UpToDate:
                 finished = OutPath.Text;
                 Play(sender, e);
                 return;
             case Mode.UpdateBuilder:
+                if (!OlderOk(Tools.Find()?.Version)) return;
                 SaveSettings();
                 LauncherGo.IsEnabled = false;
                 LauncherStatus.Text = "Getting the new builder…";
-                try { await Updater.RunLatestSetup(this, Array.Empty<string>()); }
+                try { await Updater.RunLatestSetup(this, Array.Empty<string>(), updateTarget, Switching); }
                 catch (Exception ex)
                 {
                     MessageBox.Show(this, ex.Message + " You can also download LongshotBuilder.exe from the releases page.", "Longshot");
@@ -1309,7 +1350,7 @@ public partial class MainWindow : Window
         }
         if (updating && lastUpdate is { } u)
         {
-            Updater.UpdateFolder(this, u.Folder, u.Tag, fetched: false, exact: u.Tag != null && !LaunchList.SameTag(u.Tag, latestTag));
+            Updater.UpdateFolder(this, u.Folder, u.Tag, fetched: false, named: u.Tag != null && !LaunchList.SameTag(u.Tag, latestTag));
             return;
         }
         updating = false;
