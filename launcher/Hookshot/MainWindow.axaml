@@ -288,7 +288,9 @@
           </ScrollViewer>
 
           <!-- ==== Settings: what is on or off ==== -->
-          <StackPanel Name="SettingsPage" Grid.Row="1" Margin="16,12,16,0" IsVisible="False" Spacing="12">
+          <!-- (scrolled, when a note under a switch makes it taller than the panel) -->
+          <ScrollViewer Name="SettingsPage" Grid.Row="1" Margin="0,12,0,0" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Margin="16,0,16,0" Spacing="12">
             <Grid>
               <TextBlock Classes="small" Text="Prepare Shaders" VerticalAlignment="Center"/>
               <ToggleButton Name="PrepareTick" Classes="switch" IsChecked="True"
@@ -303,6 +305,13 @@
               <TextBlock Classes="small" Text="Enable FSR 4" VerticalAlignment="Center"/>
               <ToggleButton Name="FsrTick" Classes="switch"
                             ToolTip.Tip="For AMD Radeon graphics cards. The build downloads AMD's runtime under AMD's license (asked when it is switched on). It is chosen in the game's Insert menu, as the Upscaler."/>
+            </Grid>
+            <!-- (DLSS and FSR 4 take effect at a build: when they no longer say how the game in the folder was built, this says so in a
+                 line, the whole under the pointer, and Rebuild builds it again with them) -->
+            <Grid Name="RebuildRow" IsVisible="False" Margin="0,-4,0,0">
+              <TextBlock Name="RebuildNote" Classes="small" Foreground="#E3B955" VerticalAlignment="Center"/>
+              <Button Name="RebuildLink" Classes="link" Content="Rebuild" HorizontalAlignment="Right" VerticalAlignment="Center"
+                      ToolTip.Tip="Builds your game again from the game files it keeps, with your settings now. Your saves and settings stay."/>
             </Grid>
             <StackPanel Spacing="4">
               <Grid>
@@ -334,6 +343,7 @@
               </TextBlock>
             </StackPanel>
           </StackPanel>
+          </ScrollViewer>
         </Grid>
 
         <!-- ==== the foot: Check for updates; Update Available when there is one ==== -->

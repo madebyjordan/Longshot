@@ -4,7 +4,7 @@ using Avalonia.Threading;
 namespace Hookshot.Launcher;
 
 /// (development) The window as Skia draws it, with no screen, to a PNG: for comparing with the design (Paper's "Hookshot v2"). It is
-/// drawn once GitHub's releases are in (or did not answer), as the window would show them. HOOKSHOT_UI_ACT=build|update|share: then that
+/// drawn once GitHub's releases are in (or did not answer), as the window would show them. HOOKSHOT_UI_ACT=build|update|share|rebuild: then that
 /// is done as if pressed (Build Game; Update Available), drawn on the way at <file>-working.png and as it ended at <file>; with
 /// "details" too (build,details), Show details is pressed on the way
 static class Shot

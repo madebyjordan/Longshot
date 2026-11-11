@@ -95,6 +95,7 @@ public partial class MainWindow : Window
         PrepareTick.Click += (_, _) => SaveSettings();
         DlssTick.Click += async (_, _) => await DlssClick();
         FsrTick.Click += async (_, _) => await FsrClick();
+        RebuildLink.Click += async (_, _) => { if (folder.Version is { } v && IsRelease(v)) await Bring(v, ask: true, rebuild: true); };
         MemoryBox.SelectionChanged += (_, _) => SaveSettings();
         LowMemTick.Click += (_, _) => LowMemClick();
         ShareButton.Click += async (_, _) => await ShareClick();
@@ -157,6 +158,7 @@ public partial class MainWindow : Window
             case "details": ShowDetails(true); return Task.CompletedTask;
             case "cancel": job?.Cancel(); return Task.CompletedTask;
             case "share": return ShareClick();
+            case "rebuild": return folder.Version is { } v ? Bring(v, ask: false, rebuild: true) : Task.CompletedTask;
             default: return what.StartsWith("row:") ? Bring(what[4..], ask: false) : Task.CompletedTask;   // (a release's row)
         }
     }
@@ -288,7 +290,9 @@ public partial class MainWindow : Window
     async void RowClick(object? sender, RoutedEventArgs e)
     {
         if (e.Source is not Button { Tag: LaunchChoice c } || job != null) return;
-        if (!c.Here && c.Reach && c.Tag != null) await Bring(c.Tag, ask: true);
+        // (the one in the folder: built again with the settings now, asked first; a folder without its game files cannot be)
+        if (c.Here && c.Rebuilds && folder.HasGame && c.Tag != null) await Bring(c.Tag, ask: true, rebuild: true);
+        else if (!c.Here && c.Reach && c.Tag != null) await Bring(c.Tag, ask: true);
     }
 
     async Task UpdateClick()
@@ -355,7 +359,8 @@ public partial class MainWindow : Window
         UpdateButton.IsEnabled = !busy;
         FootBar.IsVisible = footWorking;
         FootStopped.IsVisible = footStopped;
-        FootStopped.Content = footStopped && stoppedJob!.Work.Bar.StartsWith("Switching") ? "Switch stopped" : "Update stopped";
+        FootStopped.Content = !footStopped ? "Update stopped" : stoppedJob!.Work.IsRebuild ? "Rebuild stopped"
+            : stoppedJob.Work.Bar.StartsWith("Switching") ? "Switch stopped" : "Update stopped";
         FootCancel.IsVisible = footWorking;
         FootLinks.IsVisible = footStopped;
         FootLine.Text = available ? $"{VersionName(latest!)} Latest" : "";
@@ -600,10 +605,35 @@ public partial class MainWindow : Window
         "folder).\n\nDo you accept AMD's license?";
 
     /// The DLSS switch: NVIDIA's license first, and it stays on only when that is accepted
+    /// Settings' note when DLSS and FSR 4 no longer say how the game in the folder was built (FSR 4 by make_game.py's mark, DLSS by
+    /// NVIDIA's library in its ngx folder), with Rebuild beside it. (Turning DLSS off is not one: NVIDIA's library stays, and the
+    /// game's Upscaler menu chooses whether it is used)
+    void ShowRebuildNote()
+    {
+        string? why = null;
+        if (folder.HasGame && folder.Rebuilds && folder.Version is { } v && IsRelease(v))
+        {
+            var fsr = FsrTick.IsChecked == true && fsrLicense;
+            var builtFsr = File.Exists(Path.Combine(folder.Path, ".hookshot_fsr"));
+            var ngx = Path.Combine(folder.Path, "ngx");
+            var builtDlss = Directory.Exists(ngx) && Directory.EnumerateFiles(ngx).Any(f => Path.GetFileName(f) is "nvngx_dlss.dll" ||
+                                                                                           Path.GetFileName(f).StartsWith("libnvidia-ngx-dlss.so"));
+            if (fsr && !builtFsr) why = "Built without FSR 4";
+            else if (!fsr && builtFsr) why = "Built with FSR 4";
+            else if (DlssTick.IsChecked == true && !builtDlss) why = "Built without DLSS";
+        }
+        RebuildNote.Text = why ?? "";
+        ToolTip.SetTip(RebuildNote, why == null ? null
+            : $"{why}. Rebuild builds your game again from its game files with your settings now, {BuildTimes.About(typicalBuild)} on this PC. Your saves stay.");
+        RebuildRow.IsVisible = why != null;
+        RebuildLink.IsEnabled = job == null;
+    }
+
     async Task DlssClick()
     {
         if (DlssTick.IsChecked == true && !await Dialog.Ask(this, "NVIDIA DLSS", DlssLicense, "Accept", "Decline")) DlssTick.IsChecked = false;
         SaveSettings();
+        ShowRebuildNote();
     }
 
     /// The FSR 4 switch: AMD's license first, the same
@@ -615,6 +645,7 @@ public partial class MainWindow : Window
             if (!fsrLicense) FsrTick.IsChecked = false;
         }
         SaveSettings();
+        ShowRebuildNote();
     }
 
     /// Settings' "Lower memory use" as the game folder's hookshot_env.txt has it (GameEnv.cs), and the cache file's size under it
@@ -629,6 +660,7 @@ public partial class MainWindow : Window
             : "Skips the pipeline cache file the game makes as it plays: less memory, may stutter more the first time.";
         LowMemNote.IsVisible = LowMemNote.Text.Length > 0;
         ShareButton.IsEnabled = game != null;
+        ShowRebuildNote();
     }
 
     /// Save my pipeline list: the zip in Downloads, the report copied, its folder and the issue opened. Nothing is uploaded
@@ -706,29 +738,38 @@ public partial class MainWindow : Window
 
     /// A release brought into the folder, which keeps the game files it was built from: its builder got first when it is not
     /// here, then its make_game.py --update builds the folder again. Asked first, as it is a rebuild and not a download
-    async Task Bring(string tag, bool ask)
+    async Task Bring(string tag, bool ask, bool rebuild = false)
     {
         if (job != null || !folder.HasGame) return;
         var ahead = folder.Version == null || !IsRelease(folder.Version) || Newer(tag, folder.Version);
         var name = VersionName(tag);
-        var rebuild = $"Your game is rebuilt from your game files with {name}'s tools. That takes {BuildTimes.About(typicalBuild)} on this PC, and Play waits until it is done. Your saves and settings stay.";
-        var question = ahead ? $"Update to {name}?\n\n{rebuild}" : $"Switch back to {name}? It replaces {VersionName(folder.Version!)} in this folder.\n\n{rebuild}";
-        if (ask && !await Dialog.Ask(this, "Hookshot", question, ahead ? "Update" : "Switch back", "Not now")) return;
         var saved = BuilderSettings.Load(Builders.SettingsPath);
+        var about = BuildTimes.About(typicalBuild);
+        var rebuilt = $"Your game is rebuilt from your game files with {name}'s tools. That takes {about} on this PC, and Play waits until it is done. Your saves and settings stay.";
+        var question = rebuild
+            ? $"Rebuild {name}?\n\nYour game is built again from your game files with your settings now (FSR 4 {(saved?.Fsr == true && saved.FsrLicense ? "on" : "off")}, " +
+              $"DLSS {(saved?.Dlss == true ? "on" : "off")}). That takes {about} on this PC, and Play waits until it is done. Your saves and settings stay."
+            : ahead ? $"Update to {name}?\n\n{rebuilt}" : $"Switch back to {name}? It replaces {VersionName(folder.Version!)} in this folder.\n\n{rebuilt}";
+        if (ask && !await Dialog.Ask(this, "Hookshot", question, rebuild ? "Rebuild" : ahead ? "Update" : "Switch back", "Not now")) return;
         int? memoryGb = saved?.MemoryGb is int gb && gb > 0 ? gb : null;
         var game = folder.Path;
         // (as the WPF launcher's update: the saved DLSS switch, or a folder built with DLSS whose license was accepted then, is
         // built with it; FSR 4 the same. Each said only to tools that know the word)
-        var dlss = saved?.Dlss == true || (File.Exists(Path.Combine(game, "ngx", "nvngx_dlss.dll")) && File.Exists(Path.Combine(Builders.NgxSdk, "LICENSE.txt")));
-        var fsr = (saved?.Fsr == true && saved.FsrLicense) || (File.Exists(Path.Combine(game, ".hookshot_fsr")) &&
+        // (a rebuild is for the settings now: what the folder was built with does not carry over, and FSR 4 switched off is taken
+        // out, --no-fsr)
+        var dlss = saved?.Dlss == true || (!rebuild && File.Exists(Path.Combine(game, "ngx", "nvngx_dlss.dll")) &&
+                                           File.Exists(Path.Combine(Builders.NgxSdk, "LICENSE.txt")));
+        var fsr = (saved?.Fsr == true && saved.FsrLicense) || (!rebuild && File.Exists(Path.Combine(game, ".hookshot_fsr")) &&
                   File.Exists(Path.Combine(game, "amd_fidelityfx_upscaler_vk.dll")) && File.Exists(Path.Combine(game, "LICENSE-AMD-FSR-SDK.md")));
+        var noFsr = rebuild && !fsr && File.Exists(Path.Combine(game, ".hookshot_fsr"));
         var prepare = saved?.PrepareLater != true;
         TabReleases.IsChecked = true;
         ShowMenu(true);
-        await Run(new Job(tag, firstBuild: false, ahead, fetch: !Builders.Installed().ContainsKey(tag)), b =>
+        await Run(new Job(tag, firstBuild: false, ahead, fetch: !Builders.Installed().ContainsKey(tag), rebuild), b =>
         {
             var args = new List<string> { "--update", game };
             Options(b, args, dlss, fsr, prepare);
+            if (noFsr && Builders.Knows(b, "--no-fsr")) args.Add("--no-fsr");
             return Builders.MakeGame(b, args, null, memoryGb, dlss && Builders.Knows(b, "--fetch-ngx-sdk"), fsr && Builders.Knows(b, "--fsr"));
         }, game);
     }
@@ -804,7 +845,8 @@ public partial class MainWindow : Window
     async Task Retry()
     {
         if (job != null || stoppedJob is not { } was || retryWith is not { } makeGame || retryFolder is not { } target) return;
-        var again = new Job(was.Tag, was.FirstBuild, !was.Work.Bar.StartsWith("Switching"), fetch: !Builders.Installed().ContainsKey(was.Tag));
+        var again = new Job(was.Tag, was.FirstBuild, !was.Work.Bar.StartsWith("Switching"), fetch: !Builders.Installed().ContainsKey(was.Tag),
+                            was.Work.IsRebuild);
         await Run(again, makeGame, target);
     }
 

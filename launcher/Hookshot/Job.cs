@@ -23,10 +23,11 @@ sealed class Job
     Process? process;
 
     /// ahead: the release is ahead of the one in the folder (an update), else a switch back. FirstBuild: no game in the folder yet
-    public Job(string tag, bool firstBuild, bool ahead, bool fetch)
+    /// rebuild: the version in the folder built again with the settings now (Settings' Rebuild, or its own row in Releases)
+    public Job(string tag, bool firstBuild, bool ahead, bool fetch, bool rebuild = false)
     {
         (Tag, FirstBuild) = (tag, firstBuild);
-        Work = new LaunchWork(LaunchList.VersionName(tag), ahead, fetch);
+        Work = new LaunchWork(LaunchList.VersionName(tag), ahead, fetch, rebuild);
     }
 
     public bool Cancelled => cancel.IsCancellationRequested;
