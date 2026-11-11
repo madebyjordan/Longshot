@@ -29,6 +29,8 @@
     <Compile Include="..\..\builder\HookshotBuilder\Strings.cs" Link="Shared\Strings.cs" />
     <Compile Include="..\..\builder\HookshotBuilder\BuildWorkers.cs" Link="Shared\BuildWorkers.cs" />
     <Compile Include="..\..\builder\HookshotBuilder\BuilderSettings.cs" Link="Shared\BuilderSettings.cs" />
+    <!-- (the Linux game folder's starter, which opens this launcher first: Builders.RefreshStarter puts it in each folder built) -->
+    <EmbeddedResource Include="..\..\builder\linux\hookshot-folder" LogicalName="hookshot-folder" />
     <AvaloniaResource Include="..\..\builder\HookshotBuilder\Images\hookshot.png" Link="Assets\hookshot.png" />
     <AvaloniaResource Include="..\..\builder\HookshotBuilder\Fonts\Marcellus-Regular.ttf" Link="Assets\Fonts\Marcellus-Regular.ttf" />
   </ItemGroup>

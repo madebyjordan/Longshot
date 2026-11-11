@@ -18,6 +18,7 @@ public partial class App : Application
             string? After(string name) => args.SkipWhile(a => a != name).Skip(1).FirstOrDefault();
             var folder = After("--launch") ?? After("--update") ?? "";
             var tag = After("--update") != null ? After("--tag") : null;
+            Builders.Remember();   // (the game folders' starters open this launcher: Builders.cs)
             desktop.MainWindow = new MainWindow(GameFolder.Read(folder), MainWindow.Preview.FromEnvironment(), tag);
         }
         base.OnFrameworkInitializationCompleted();

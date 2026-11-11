@@ -684,6 +684,73 @@ class UpdateTests(unittest.TestCase):
             self.assertEqual(lines[0], str(apprun))
             self.assertEqual(lines[1:], ["--launch", str(game)])
 
+    def test_the_folder_launcher_starts_the_hookshot_launcher_first(self):
+        # the launcher (launcher/Hookshot) writes where it runs from in <home>/hookshot/builder/launcher at every start: the folder
+        # opens it before the installed builder; one moved or removed since is passed over for the builder
+        with tempfile.TemporaryDirectory(prefix="hookshot-folder-") as tmp:
+            root = Path(tmp)
+            game = root / "game"
+            (game / "bin").mkdir(parents=True)
+            home = root / "home"
+            installed = home / "hookshot" / "builder"
+            (installed / "versions" / "v9").mkdir(parents=True)
+            (installed / "current").write_text("v9\n", encoding="utf-8")
+            started = root / "started"
+            apprun = installed / "versions" / "v9" / "AppRun"
+            launcher = root / "Hookshot-Launcher.AppImage"
+            for exe in (apprun, launcher):
+                exe.write_text("#!/bin/sh\nprintf '%%s\n' \"$0\" \"$@\" > '%s'\n" % started, encoding="utf-8")
+                exe.chmod(0o755)
+            (installed / "launcher").write_text("%s\n" % launcher, encoding="utf-8")
+            script = game / "hookshot"
+            shutil.copyfile(ROOT / "builder" / "linux" / "hookshot-folder", script)
+            script.chmod(0o755)
+            env = dict(os.environ, HOOKSHOT_BUILDER_HOME=str(home))
+            for gone, want in ((False, launcher), (True, apprun)):
+                if gone:
+                    launcher.unlink()
+                ran = subprocess.run([str(script)], env=env, check=False, text=True, capture_output=True)
+                self.assertEqual(ran.returncode, 0, ran.stderr)
+                self.assertEqual(started.read_text(encoding="utf-8").splitlines(), [str(want), "--launch", str(game)])
+
+    @unittest.skipUnless(shutil.which("cc") or shutil.which("gcc"), "a C compiler")
+    def test_the_games_update_offer_opens_the_hookshot_launcher_first(self):
+        # host/hos_update.c's installed_builder, as the game has it, compiled alone: the launcher where it last ran, else the
+        # builder the update installed, else none; a launcher line that is not an absolute path to a program is passed over
+        source = (ROOT / "host" / "hos_update.c").read_text(encoding="utf-8")
+        linux = source[source.index("#elif defined(__linux__)"):]
+        cut = lambda start, end: linux[linux.index(start):linux.index(end, linux.index(start))]
+        program = "\n".join([
+            "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <ctype.h>\n#include <unistd.h>\n#define MAX_PATH 4096",
+            source[source.index("static int safe_tag("):source.index("\n}\n", source.index("static int safe_tag(")) + 3],
+            cut("static int installed_builder(", "\nvoid hos_update_check("),
+            "int main(void) { char out[8192]; int r = installed_builder(out, sizeof out); printf(\"%d %s\\n\", r, r ? out : \"\"); return 0; }",
+        ])
+        with tempfile.TemporaryDirectory(prefix="hookshot-offer-") as tmp:
+            root = Path(tmp)
+            (root / "offer.c").write_text(program, encoding="utf-8")
+            subprocess.run([shutil.which("cc") or shutil.which("gcc"), "-std=gnu11", "-w", str(root / "offer.c"), "-o", str(root / "offer")],
+                           check=True)
+            home = root / "home"
+            installed = home / "hookshot" / "builder"
+            (installed / "versions" / "v9").mkdir(parents=True)
+            env = dict(os.environ, HOOKSHOT_BUILDER_HOME=str(home))
+            ask = lambda: subprocess.run([str(root / "offer")], env=env, check=True, text=True, capture_output=True).stdout.strip()
+            self.assertEqual(ask(), "0")
+            apprun = installed / "versions" / "v9" / "AppRun"
+            apprun.write_text("#!/bin/sh\n", encoding="utf-8")
+            apprun.chmod(0o755)
+            (installed / "current").write_text("v9\n", encoding="utf-8")
+            self.assertEqual(ask(), "1 %s" % apprun)
+            launcher = root / "Hookshot-Launcher.AppImage"
+            launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+            launcher.chmod(0o755)
+            (installed / "launcher").write_text("%s\n" % launcher, encoding="utf-8")
+            self.assertEqual(ask(), "1 %s" % launcher)
+            for bad in ("Hookshot-Launcher.AppImage", str(root / "missing")):
+                (installed / "launcher").write_text(bad + "\n", encoding="utf-8")
+                self.assertEqual(ask(), "1 %s" % apprun, bad)
+
     def test_the_folder_launcher_starts_the_game_when_no_builder_is_installed(self):
         with tempfile.TemporaryDirectory(prefix="hookshot-folder-") as tmp:
             root = Path(tmp)

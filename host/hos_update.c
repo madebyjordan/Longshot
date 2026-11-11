@@ -328,8 +328,10 @@ static int latest_tag(const char *have, char *tag, size_t cap) {
                     "https://github.com/NotRexed/Hookshot/releases/latest/download/hookshot-linux.txt 2>/dev/null", tag, cap, 0);
 }
 
-/* the builder an update installed (builder/linux/linux_update.py): <data>/hookshot/builder/versions/<current>/AppRun. The
-   builder= line names the AppImage that built the folder, which the player may have deleted since */
+/* the Hookshot launcher where it last ran from (<data>/hookshot/builder/launcher, which it writes at every start: launcher/Hookshot;
+   it takes --update <folder> --tag <tag> too), else the builder an update installed (builder/linux/linux_update.py):
+   <data>/hookshot/builder/versions/<current>/AppRun. The builder= line names the AppImage that built the folder, which the player
+   may have deleted since */
 static int installed_builder(char *out, size_t cap) {
     const char *home = getenv("HOOKSHOT_BUILDER_HOME"), *data = getenv("XDG_DATA_HOME"), *user = getenv("HOME");
     char root[MAX_PATH * 2], path[MAX_PATH * 2 + 64], tag[128];
@@ -337,6 +339,16 @@ static int installed_builder(char *out, size_t cap) {
     else if (data && *data) snprintf(root, sizeof root, "%s/hookshot/builder", data);
     else if (user && *user) snprintf(root, sizeof root, "%s/.local/share/hookshot/builder", user);
     else return 0;
+    snprintf(path, sizeof path, "%s/launcher", root);
+    FILE *l = fopen(path, "rb");
+    if (l) {
+        const int read = fgets(out, (int)cap, l) != NULL;
+        fclose(l);
+        if (read) {
+            out[strcspn(out, "\r\n")] = 0;
+            if (out[0] == '/' && access(out, X_OK) == 0) return 1;
+        }
+    }
     snprintf(path, sizeof path, "%s/current", root);
     FILE *f = fopen(path, "rb");
     if (!f) return 0;

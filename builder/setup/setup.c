@@ -894,12 +894,37 @@ static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(h, msg, wp, lp);
 }
 
-/* (launch mode) hookshot.exe in a game folder (nx2/make_game.py puts this file there under that name): the installed
-   builder opened as the game's launcher (--launch <that folder>: Play, and Update when a newer release is out), at once, with no
+/* (launch mode) hookshot.exe in a game folder (nx2/make_game.py puts this file there under that name): the Hookshot launcher
+   where it last ran from, else the installed builder, opened as the game's launcher (--launch <that folder>: Play, and Update when a newer release is out), at once, with no
    window, download or network of its own. With no builder installed yet, the setup runs as usual and then opens the launcher. */
 static int launch_installed(const wchar_t *args) {
     wchar_t base[MAX_PATH], cur[MAX_PATH], exe[MAX_PATH], dir[MAX_PATH], cmd[4096];
     if (SHGetFolderPathW(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, base) != S_OK) return 0;
+    /* (the Hookshot launcher first (launcher/Hookshot), where it last ran from: it writes HookshotBuilder\launcher.txt at every start,
+       installed or a portable copy. One moved or removed since is passed over for the builder installed, as before it) */
+    {
+        char path[MAX_PATH * 3] = "";
+        wchar_t file[MAX_PATH], wpath[MAX_PATH];
+        swprintf(file, MAX_PATH, L"%ls\\HookshotBuilder\\launcher.txt", base);
+        read_small(file, path, sizeof path);
+        const size_t n = strlen(path);
+        const int whole = n > 7 && ((path[1] == ':' && path[2] == '\\') || (path[0] == '\\' && path[1] == '\\')) &&
+                          !_stricmp(path + n - 4, ".exe") && !strchr(path, '"');
+        if (whole && MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, wpath, MAX_PATH) > 0) {
+            const DWORD at = GetFileAttributesW(wpath);
+            if (at != INVALID_FILE_ATTRIBUTES && !(at & FILE_ATTRIBUTE_DIRECTORY)) {
+                wcscpy(dir, wpath);
+                *wcsrchr(dir, L'\\') = 0;
+                swprintf(cmd, 4096, L"\"%ls\" %ls", wpath, args);
+                STARTUPINFOW si = {sizeof si};
+                PROCESS_INFORMATION pi;
+                if (CreateProcessW(NULL, cmd, NULL, NULL, FALSE, 0, NULL, dir, &si, &pi)) {
+                    CloseHandle(pi.hThread), CloseHandle(pi.hProcess);
+                    return 1;
+                }
+            }
+        }
+    }
     char tag[128] = "";
     swprintf(cur, MAX_PATH, L"%ls\\HookshotBuilder\\versions\\current.txt", base);
     read_small(cur, tag, sizeof tag);

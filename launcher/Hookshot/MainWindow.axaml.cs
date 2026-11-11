@@ -743,6 +743,7 @@ public partial class MainWindow : Window
             var minutes = Math.Max(1, (int)took.TotalMinutes);
             readyNote = j.FirstBuild ? $"Your game is ready · built in {(took.TotalHours >= 1 ? $"{(int)took.TotalHours} h {took.Minutes} min" : minutes == 1 ? "a minute" : $"{minutes} minutes")}" : null;
             var keep = built.Version;
+            Builders.RefreshStarter(target);
             _ = Task.Run(() => Builders.FreeAfterBuild(keep));
             if (j.FirstBuild) CheckSource();
             ShowLowMem();

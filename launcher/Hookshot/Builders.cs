@@ -350,4 +350,55 @@ except Exception as e:
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }   // (a file in use: it goes after the next build)
     }
+
+    // ---- the game folders' own starters open this launcher ----
+
+    /// (where this launcher records itself: Windows launcher.txt, beside versions\current.txt; Linux launcher, beside current)
+    static string Record => Path.Combine(Base, OperatingSystem.IsWindows() ? "launcher.txt" : "launcher");
+
+    /// This launcher's path written down at every start, installed or a portable copy, so that a game folder's starter
+    /// (builder/setup/setup.c launch_installed, builder/linux/hookshot-folder) and the game's update offer (host/hos_update.c)
+    /// open it rather than an installed builder. Linux: the AppImage, not its mount (launcher/packaging/linux/AppRun)
+    public static void Remember()
+    {
+        var self = Environment.GetEnvironmentVariable("HOOKSHOT_LAUNCHER_EXE") is { Length: > 0 } image ? image : Environment.ProcessPath;
+        // (not dotnet itself, running the launcher's dll in development)
+        if (self == null || !Path.GetFileName(self).StartsWith("Hookshot", StringComparison.OrdinalIgnoreCase)) return;
+        try
+        {
+            if (File.Exists(Record) && File.ReadAllText(Record).Trim() == self) return;
+            Directory.CreateDirectory(Base);
+            File.WriteAllText(Record + ".new", self + "\n");
+            File.Move(Record + ".new", Record, overwrite: true);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+    }
+
+    /// After a build: the game folder's starter (hookshot.exe, hookshot on Linux) made this launcher's own, which opens it first.
+    /// The one the release's builder put there opens that builder: releases before this launcher do not know it. Windows: the setup
+    /// this launcher ships (HookshotBuilder-Setup.exe beside it, the starter's program). Linux: builder/linux/hookshot-folder, in it
+    public static void RefreshStarter(string folder)
+    {
+        var starter = Path.Combine(folder, OperatingSystem.IsWindows() ? "hookshot.exe" : "hookshot");
+        // (only a folder laid out with a starter: the game in bin/. One the build left as the game itself is not touched)
+        if (!File.Exists(Path.Combine(folder, "bin", OperatingSystem.IsWindows() ? "hookshot.exe" : "hookshot"))) return;
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                var setup = Path.Combine(AppContext.BaseDirectory, "HookshotBuilder-Setup.exe");
+                if (!File.Exists(setup)) return;
+                File.Copy(setup, starter + ".new", overwrite: true);
+            }
+            else
+            {
+                using var script = typeof(Builders).Assembly.GetManifestResourceStream("hookshot-folder");
+                if (script == null) return;
+                using (var to = File.Create(starter + ".new")) script.CopyTo(to);
+                File.SetUnixFileMode(starter + ".new", (UnixFileMode)0b111_101_101);
+            }
+            File.Move(starter + ".new", starter, overwrite: true);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }   // (the old starter stays: it still starts the game)
+    }
 }
