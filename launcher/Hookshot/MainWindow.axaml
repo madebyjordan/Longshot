@@ -312,6 +312,18 @@
               </Grid>
               <TextBlock Name="LowMemNote" Classes="small" Foreground="#B0B0B0" Width="189" HorizontalAlignment="Left" TextWrapping="Wrap" IsVisible="False"/>
             </StackPanel>
+            <!-- (#2447's Save my pipeline list: the game folder's list and the "Submit your pipelines" issue's report, zipped into Downloads by
+                 the builder's nx2/pipeline_share.py. Only with a game: the list is the game's. What it did, under it) -->
+            <StackPanel Spacing="4">
+              <Grid>
+                <TextBlock Classes="small" Text="Pipeline list" VerticalAlignment="Center"/>
+                <Button Name="ShareButton" Classes="link" Content="Save" HorizontalAlignment="Right" VerticalAlignment="Center"
+                        ToolTip.Tip="Saves the list of pipelines your game made, and a filled-in report, as a zip for the Submit your pipelines issue. Nothing is uploaded."/>
+              </Grid>
+              <TextBlock Name="ShareNote" Classes="small" Foreground="#B0B0B0" Width="189" HorizontalAlignment="Left" TextWrapping="Wrap"
+                         MaxLines="3" TextTrimming="CharacterEllipsis"
+                         Text="Helps remove stutter: a zip to attach to the Submit your pipelines issue."/>
+            </StackPanel>
             <StackPanel Spacing="4">
               <Grid>
                 <TextBlock Classes="small" Text="Enable pre-releases" VerticalAlignment="Center"/>

@@ -56,6 +56,9 @@ public partial class MainWindow : Window
     internal MainWindow(GameFolder folder, Preview preview, string? updateTag = null)
     {
         var saved = BuilderSettings.Load(Builders.SettingsPath) ?? new BuilderSettings();
+        // (a portable home keeps them relative to itself: whole again here)
+        (saved.Out, saved.Nup, saved.Romfs, saved.Exefs) =
+            (Builders.LoadPath(saved.Out), Builders.LoadPath(saved.Nup), Builders.LoadPath(saved.Romfs), Builders.LoadPath(saved.Exefs));
         // (opened with no folder: the game built last, when it is still there)
         if (folder.Path.Length == 0 && saved.Out is { Length: > 0 } last && GameFolder.Read(last) is { HasGame: true } before) folder = before;
         this.folder = folder;
@@ -67,7 +70,7 @@ public partial class MainWindow : Window
 
         // ---- the saved choices ----
         outPath = folder.Path.Length > 0 ? folder.Path
-            : saved.Out is { Length: > 2 } o ? o : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Games", "Hookshot");
+            : saved.Out is { Length: > 2 } o ? o : Builders.DefaultGame;
         if (saved.Romfs is { } r && saved.Exefs is { } x && Directory.Exists(r) && Directory.Exists(x)) (romfs, exefs) = (r, x);
         else if (saved.Nup is { } n && File.Exists(n)) nup = n;
         PrepareTick.IsChecked = !saved.PrepareLater;
@@ -94,6 +97,7 @@ public partial class MainWindow : Window
         FsrTick.Click += async (_, _) => await FsrClick();
         MemoryBox.SelectionChanged += (_, _) => SaveSettings();
         LowMemTick.Click += (_, _) => LowMemClick();
+        ShareButton.Click += async (_, _) => await ShareClick();
         CheckButton.Click += async (_, _) => await CheckReleases(say: true);
         UpdateButton.Click += async (_, _) => await UpdateClick();
         UpdateGo.Click += async (_, _) => await UpdateClick();
@@ -152,6 +156,7 @@ public partial class MainWindow : Window
             case "update": return UpdateClick();
             case "details": ShowDetails(true); return Task.CompletedTask;
             case "cancel": job?.Cancel(); return Task.CompletedTask;
+            case "share": return ShareClick();
             default: return what.StartsWith("row:") ? Bring(what[4..], ask: false) : Task.CompletedTask;   // (a release's row)
         }
     }
@@ -562,8 +567,8 @@ public partial class MainWindow : Window
     void SaveSettings()
     {
         var s = BuilderSettings.Load(Builders.SettingsPath) ?? new BuilderSettings();
-        s.Out = outPath;
-        (s.Nup, s.Romfs, s.Exefs) = (nup, romfs, exefs);
+        s.Out = Builders.SavePath(outPath);
+        (s.Nup, s.Romfs, s.Exefs) = (Builders.SavePath(nup), Builders.SavePath(romfs), Builders.SavePath(exefs));
         s.Dlss = DlssTick.IsChecked == true;
         s.Fsr = FsrTick.IsChecked == true;
         s.FsrLicense = fsrLicense;
@@ -623,7 +628,42 @@ public partial class MainWindow : Window
             ? $"Skips the {BuildTimes.Size(bytes)} pipeline cache file: less memory, may stutter more the first time."
             : "Skips the pipeline cache file the game makes as it plays: less memory, may stutter more the first time.";
         LowMemNote.IsVisible = LowMemNote.Text.Length > 0;
+        ShareButton.IsEnabled = game != null;
     }
+
+    /// Save my pipeline list: the zip in Downloads, the report copied, its folder and the issue opened. Nothing is uploaded
+    async Task ShareClick()
+    {
+        var installed = Builders.Installed();
+        var builder = folder.Version is { } v && installed.TryGetValue(v, out var own) ? own : Builders.Newest(installed);
+        if (!folder.HasGame || builder == null)
+        {
+            ShareNote.Text = "There is no builder on this PC to save it with yet.";
+            return;
+        }
+        ShareButton.IsEnabled = false;
+        ShareNote.Text = "Saving…";
+        var (zip, report, count, error) = await Builders.SharePipelines(builder, folder.Path);
+        ShareButton.IsEnabled = true;
+        if (zip == null)
+        {
+            ShareNote.Text = error ?? "The pipeline list could not be saved.";
+            ToolTip.SetTip(ShareNote, ShareNote.Text);   // (whole: the note is cut at three lines)
+            return;
+        }
+        var copied = false;
+        if (Clipboard is { } clipboard)
+            try { await clipboard.SetTextAsync(report ?? ""); copied = true; } catch (Exception) { }
+        foreach (var open in new[] { Path.GetDirectoryName(zip)!, Issue })
+            try { Process.Start(new ProcessStartInfo(open) { UseShellExecute = true }); } catch (Exception) { }
+        // (the menu's panel is narrow: the short of it there, the whole under the pointer)
+        ShareNote.Text = $"Saved in {Path.GetFileName(Path.GetDirectoryName(zip))}: attach it to issue #2034" +
+                         (copied ? " with the copied report." : ", with the report in it.");
+        ToolTip.SetTip(ShareNote, $"Saved {Path.GetFileName(zip)} ({count} pipelines) in {Path.GetDirectoryName(zip)}. Attach it to a comment on " +
+                                  $"{Issue}, then paste the report and say where you played.");
+    }
+
+    const string Issue = "https://github.com/NotRexed/Hookshot/issues/2034";
 
     void LowMemClick()
     {

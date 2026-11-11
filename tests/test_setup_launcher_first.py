@@ -1,8 +1,8 @@
 """The game folder's launcher (builder/setup/setup.c, launch_installed) opens the Hookshot launcher (launcher/Hookshot) where it last
-ran from, as it wrote it in HookshotBuilder\\launcher.txt, before any installed builder; one moved or removed since, or a line that
-is not a whole path to an .exe, is passed over for the installed builder as before. The actual function and its helper, cut from
-setup.c, compiled with two stand-ins (where %LOCALAPPDATA% is, and a CreateProcessW that only says what it would start) over real
-files in a temporary folder.
+ran from, as it wrote it in launcher.txt in the Builder home (BuilderHome.cs: %LOCALAPPDATA%\\HookshotBuilder, or a portable
+one), before any installed builder; one moved or removed since, or a line that is not a whole path to an .exe, is passed over for
+the installed builder as before. The actual function and its helpers, cut from setup.c, compiled with stand-ins (the Builder home,
+and a CreateProcessW that only says what it would start) over real files in a temporary folder.
 
 python -I -B tests/test_setup_launcher_first.py [--cc <clang or gcc>]
 """
@@ -28,24 +28,25 @@ FIXTURE = r"""
 #include <stdio.h>
 #include <string.h>
 #include <wchar.h>
-#ifndef CSIDL_LOCAL_APPDATA
-#define CSIDL_LOCAL_APPDATA 0x001c
-#endif
-static wchar_t g_base[MAX_PATH], g_started[4096], g_dir[MAX_PATH];
-static HRESULT fake_folder(wchar_t *out) { wcscpy(out, g_base); return S_OK; }
+#include <stdarg.h>
+#include <stdlib.h>
+typedef struct { wchar_t root[MAX_PATH]; int portable; } HbHome;
+static HbHome g_home;
+static int g_home_ok = 1;
+static wchar_t g_started[4096], g_dir[MAX_PATH];
+static void fail(const wchar_t *fmt, ...) { (void)fmt; exit(90); }
 static BOOL fake_start(const wchar_t *cmd, const wchar_t *dir, PROCESS_INFORMATION *pi) {
     wcscpy(g_started, cmd), wcscpy(g_dir, dir);
     pi->hThread = pi->hProcess = NULL;
     return TRUE;
 }
-#define SHGetFolderPathW(a, b, c, d, out) fake_folder(out)
 #define CreateProcessW(app, cmd, a, b, c, d, e, dir, si, pi) fake_start(cmd, dir, pi)
 /* ACTUAL */
 int main(void) {
     /* (the folder by the environment, read wide: a C program's argv is in the ANSI code page, and the folder has a ü in it) */
     const wchar_t *base = _wgetenv(L"FIXTURE_BASE");
     if (!base) return 2;
-    wcscpy(g_base, base);
+    swprintf(g_home.root, MAX_PATH, L"%ls\\HookshotBuilder", base);
     const int r = launch_installed(L"--launch \"game\"");
     char started[8192], dir[MAX_PATH * 3];
     WideCharToMultiByte(CP_UTF8, 0, g_started, -1, started, sizeof started, NULL, NULL);
@@ -68,7 +69,10 @@ def main():
     if os.name != "nt":
         parser.error("the setup is Windows'")
     setup = (ROOT / "builder/setup/setup.c").read_text(encoding="utf-8")
-    actual = "\n".join([cut(setup, "static void read_small(", "\nstatic void write_small("),
+    actual = "\n".join([cut(setup, "static int list_name_ok(", "\n}\n") + "\n}\n",
+                        cut(setup, "static int home_path(", "\n/* ---- HTTPS GET"),
+                        cut(setup, "static void read_small(", "\nstatic void write_small("),
+                        cut(setup, "static int builder_ready(", "\n}\n") + "\n}\n",
                         cut(setup, "static int launch_installed(", "\n/* (RecompLauncher's Play)")])
     failures = 0
     with tempfile.TemporaryDirectory(prefix="hookshot launcher first ü ") as t:
@@ -93,7 +97,11 @@ def main():
         check("nothing installed, no launcher: the setup runs as before", None)
         builder = home / "versions" / "v9.9.9" / "HookshotBuilder" / "HookshotBuilder.exe"
         builder.parent.mkdir(parents=True)
-        builder.write_bytes(b"MZ")
+        # (a whole one: builder_ready, #2449, wants its runtime beside it)
+        for name in ("HookshotBuilder.exe", "HookshotBuilder.dll", "HookshotBuilder.deps.json", "HookshotBuilder.runtimeconfig.json",
+                     "hostfxr.dll", "hostpolicy.dll", "coreclr.dll", "System.Private.CoreLib.dll", "WindowsBase.dll",
+                     "PresentationCore.dll", "PresentationFramework.dll", "PresentationNative_cor3.dll", "wpfgfx_cor3.dll"):
+            (builder.parent / name).write_bytes(b"MZ")
         (home / "versions" / "current.txt").write_text("v9.9.9")
         check("a builder installed, no launcher: the builder", builder, builder.parent)
         launcher = t / "Programs" / "Hookshot ü" / "Hookshot.exe"

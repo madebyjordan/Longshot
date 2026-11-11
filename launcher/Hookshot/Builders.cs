@@ -24,9 +24,12 @@ static class Builders
     {
         get
         {
-            if (Environment.GetEnvironmentVariable("HOOKSHOT_SETUP_BASE") is { Length: > 0 } tried) return tried;
+            // (Windows: the Builder home the setup and the WPF builder use, BuilderHome.cs: HOOKSHOT_SETUP_BASE, a portable one marked
+            // beside this launcher, else %LOCALAPPDATA%\HookshotBuilder. A portable home whose marker is not valid is not used)
             if (OperatingSystem.IsWindows())
-                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HookshotBuilder");
+                try { return BuilderHome.Base; }
+                catch (IOException) { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HookshotBuilder"); }
+            if (Environment.GetEnvironmentVariable("HOOKSHOT_SETUP_BASE") is { Length: > 0 } tried) return tried;
             var data = Environment.GetEnvironmentVariable("HOOKSHOT_BUILDER_HOME") is { Length: > 0 } home ? home
                 : Environment.GetEnvironmentVariable("XDG_DATA_HOME") is { Length: > 0 } xdg ? xdg
                 : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share");
@@ -35,6 +38,41 @@ static class Builders
     }
 
     public static string SettingsPath => Path.Combine(Base, "builder-settings.json");
+
+    /// (Windows: the Builder home to a child, BuilderHome.PassTo, as the WPF builder passes it to the setup and make_game.py)
+    static void PassHome(ProcessStartInfo si)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        try { BuilderHome.PassTo(si); }
+        catch (IOException) { si.Environment["HOOKSHOT_SETUP_BASE"] = Base; }
+    }
+
+    /// Where a new game goes by default: Games\Hookshot in the user's folder, or beside a portable home (BuilderHome.DefaultGame)
+    public static string DefaultGame
+    {
+        get
+        {
+            if (OperatingSystem.IsWindows())
+                try { return BuilderHome.DefaultGame; }
+                catch (IOException) { }
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Games", "Hookshot");
+        }
+    }
+
+    /// (a path kept in the settings: relative to a portable home on its own drive, so it moves with the drive, BuilderHome.SavePath)
+    public static string? SavePath(string? path)
+    {
+        if (!OperatingSystem.IsWindows()) return path;
+        try { return BuilderHome.SavePath(path); }
+        catch (IOException) { return path; }
+    }
+
+    public static string? LoadPath(string? path)
+    {
+        if (!OperatingSystem.IsWindows()) return path;
+        try { return BuilderHome.LoadPath(path); }
+        catch (IOException) { return path; }
+    }
     public static string NgxSdk => Path.Combine(Base, "ngx-sdk");
     public static string FfxSdk => Path.Combine(Base, "ffx-sdk");
 
@@ -90,6 +128,7 @@ static class Builders
         si.RedirectStandardOutput = si.RedirectStandardError = true;
         si.StandardOutputEncoding = si.StandardErrorEncoding = System.Text.Encoding.UTF8;
         si.Environment["PYTHONIOENCODING"] = "utf-8";
+        PassHome(si);
         BuildWorkers.Apply(si, workers);
         BuildMemory.Apply(si, memoryGb);
         // (NVIDIA DLSS and AMD FSR 4: their SDKs kept in the builder's folder only when ticked; one set on the PC is not passed on)
@@ -140,6 +179,7 @@ static class Builders
             if (EngineSetup(installed) is not { } setup) return null;
             si = new ProcessStartInfo(setup);
             foreach (var a in new[] { "--engine", "--tag", tag }) si.ArgumentList.Add(a);
+            PassHome(si);   // (the release goes beside the versions of this home, a portable one too)
         }
         else
         {
@@ -349,6 +389,63 @@ except Exception as e:
                 if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }   // (a file in use: it goes after the next build)
+    }
+
+    // ---- Save my pipeline list (#2447): the builder's own nx2/pipeline_share.py, as the WPF builder and the Linux one run it ----
+
+    /// That builder's pipeline_share.py --json over the game folder: (the zip, the report, the pipelines) or why there is none.
+    /// A release from before the tool has none: said so
+    public static async Task<(string? Zip, string? Report, int Count, string? Error)> SharePipelines(Builder b, string folder)
+    {
+        var script = Path.Combine(b.Tools, "nx2", "pipeline_share.py");
+        if (!File.Exists(script))
+            return (null, null, 0, $"The builder of {LaunchList.VersionName(b.Tag)} has no pipeline list tool: update to a newer release first.");
+        var python = OperatingSystem.IsWindows() ? Path.Combine(b.Tools, "python", "python.exe") : Path.Combine(b.Dir, "usr", "python", "bin", "python3");
+        var si = new ProcessStartInfo(python)
+        {
+            WorkingDirectory = b.Tools, UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
+            StandardOutputEncoding = System.Text.Encoding.UTF8, StandardErrorEncoding = System.Text.Encoding.UTF8,
+        };
+        si.Environment["PYTHONIOENCODING"] = "utf-8";
+        foreach (var a in new[] { "-I", script, folder, "--json" }) si.ArgumentList.Add(a);
+        // (Windows: the Downloads folder where the user moved it, as Explorer has it; the script's own guess is the home folder's)
+        if (OperatingSystem.IsWindows() && Downloads() is { } downloads)
+        {
+            si.ArgumentList.Add("--out-dir");
+            si.ArgumentList.Add(downloads);
+        }
+        try
+        {
+            using var p = Process.Start(si)!;
+            var stderr = p.StandardError.ReadToEndAsync();
+            var said = (await p.StandardOutput.ReadToEndAsync()).Trim().Split('\n').LastOrDefault()?.Trim() ?? "";
+            await p.WaitForExitAsync();
+            if (!said.StartsWith('{'))
+                return (null, null, 0, "The pipeline list could not be saved: " + ((await stderr).Trim().Split('\n').LastOrDefault()?.Trim() ?? "no answer"));
+            using var doc = JsonDocument.Parse(said);
+            var r = doc.RootElement;
+            return r.GetProperty("ok").GetBoolean()
+                ? (r.GetProperty("zip").GetString(), r.GetProperty("template").GetString(), r.GetProperty("pipelines").GetInt32(), null)
+                : (null, null, 0, r.GetProperty("error").GetString());
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or IOException or JsonException
+                                       or KeyNotFoundException)
+        {
+            return (null, null, 0, "The pipeline list could not be saved: " + e.Message);
+        }
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    static string? Downloads()
+    {
+        try
+        {
+            var value = Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders",
+                                                          "{374DE290-123F-4565-9164-39C4925E467B}", null) as string;
+            var path = value == null ? null : Environment.ExpandEnvironmentVariables(value);
+            return path != null && Directory.Exists(path) ? path : null;
+        }
+        catch (Exception e) when (e is System.Security.SecurityException or IOException or UnauthorizedAccessException) { return null; }
     }
 
     // ---- the game folders' own starters open this launcher ----
