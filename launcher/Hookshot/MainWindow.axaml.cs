@@ -76,7 +76,7 @@ public partial class MainWindow : Window
         FsrTick.IsChecked = saved.Fsr && saved.FsrLicense;
         PreTick.IsChecked = preview.Pre || (saved.Track is { } t && t != "release");
         LanguageBox.ItemsSource = Strings.All;
-        LanguageBox.SelectedItem = Strings.Default();
+        LanguageBox.SelectedItem = SystemLanguage.Pick();
         WorkerBox.ItemsSource = BuildWorkers.Choices(Environment.ProcessorCount).ToList();
         WorkerBox.SelectedIndex = 0;
         var memory = BuildMemory.Choices(BuildMemory.TotalGb()).ToList();
@@ -650,7 +650,7 @@ public partial class MainWindow : Window
             return;
         }
         var source = romfs != null && exefs != null ? new List<string> { "--romfs", romfs, "--exefs", exefs } : new List<string> { "--nup", nup! };
-        var language = (LanguageBox.SelectedItem as Language ?? Strings.Default()).Code;
+        var language = (LanguageBox.SelectedItem as Language ?? SystemLanguage.Pick()).Code;
         var prepare = PrepareTick.IsChecked == true;
         var dlss = DlssTick.IsChecked == true;
         var fsr = FsrTick.IsChecked == true && fsrLicense;
