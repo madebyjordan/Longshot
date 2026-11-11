@@ -18,8 +18,9 @@
 # Options: -Longshot <folder> (the folder holding game\; found from this script's place when left out), -Jobs <n>,
 # -Launcher <folder> (the installed builder's folder: the launcher's own, when it starts this), -LauncherCommit <commit>
 # (what that one was built from, when the launcher knows; else read from its file), -NoLauncher (the game only),
-# -NoPull (the checkout as it is).
-param([string]$Longshot = "", [int]$Jobs = 0, [string]$Launcher = "", [string]$LauncherCommit = "", [switch]$NoLauncher, [switch]$NoPull)
+# -ForceLauncher (the launcher built again though its source is the same), -NoPull (the checkout as it is).
+param([string]$Longshot = "", [int]$Jobs = 0, [string]$Launcher = "", [string]$LauncherCommit = "", [switch]$NoLauncher, [switch]$ForceLauncher,
+      [switch]$NoPull)
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = New-Object Text.UTF8Encoding $false   # (what it says is read as UTF-8: a folder may have any name)
 $src = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -77,7 +78,7 @@ try {
             # (what the installed one was built from: its product version ends in "+<commit>", as .NET writes it)
             if (-not $LauncherCommit -and ((Get-Item $dll).VersionInfo.ProductVersion -match '\+([0-9a-f]{7,40})$')) { $LauncherCommit = $matches[1] }
             $differs = $true
-            if ($LauncherCommit) {
+            if ($LauncherCommit -and -not $ForceLauncher) {
                 Git diff --quiet $LauncherCommit HEAD -- builder/HookshotBuilder builder/setup | Out-Null
                 # (1: it differs; more: that commit is not in this checkout, so it cannot be told, and it is built)
                 $differs = $gitCode -ne 0
@@ -104,7 +105,7 @@ try {
                     Say "@@progress 0.8"
                     $ErrorActionPreference = "Continue"
                     & "$mingw\x86_64-w64-mingw32-windres.exe" (Join-Path $src "builder\setup\setup.rc") -I (Join-Path $src "builder\setup") -O coff -o "$ready\setup_rc.o"
-                    & "$mingw\x86_64-w64-mingw32-clang.exe" -O2 -mwindows -municode (Join-Path $src "builder\setup\setup.c") "$ready\setup_rc.o" -lwinhttp -lbcrypt -lcomctl32 -lshell32 -lole32 -o "$ready\LongshotBuilder-Setup.exe" 2>&1 | ForEach-Object { Say "$_" }
+                    & "$mingw\x86_64-w64-mingw32-clang.exe" -O2 -mwindows -municode (Join-Path $src "builder\setup\setup.c") "$ready\setup_rc.o" -lwinhttp -lbcrypt -lcomctl32 -lshell32 -lole32 "-Wl,--dependent-load-flag=0x800" -o "$ready\LongshotBuilder-Setup.exe" 2>&1 | ForEach-Object { Say "$_" }   # (as the release's is built: .github/workflows/windows-builder.yml)
                     $code = $LASTEXITCODE
                     $ErrorActionPreference = "Stop"
                     Remove-Item "$ready\setup_rc.o" -ErrorAction SilentlyContinue
