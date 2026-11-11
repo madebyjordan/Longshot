@@ -51,6 +51,32 @@ there, checked against the same SHA-256, when deps.sh has not fetched them yet.
 [`.github/workflows/launcher.yml`](../.github/workflows/launcher.yml) runs both scripts on every change to the
 launcher and keeps the zip, the AppImage and the smoke-test screenshots as the run's artifacts.
 
+## The installer
+
+`publish.ps1` also makes `build/launcher/Hookshot-Installer.exe`: `launcher/installer/installer.c` with the portable zip appended
+to it, then the zip's length and `HSZIP001`, which it reads from its own end. It needs no administrator:
+
+- the launcher goes in `%LOCALAPPDATA%\Programs\Hookshot`, unpacked beside it with Windows' own `tar.exe` and swapped in
+  whole, so an install that stops half way, or one over a launcher that is running, leaves the one before as it was;
+- Hookshot goes in the Start menu, on the desktop and in Settings > Apps, whose Uninstall runs `Uninstall.exe` (the installer
+  without its zip);
+- `/S` installs with no questions and starts nothing; `Uninstall.exe /uninstall [/S]` uninstalls.
+
+Uninstalling removes the launcher, its shortcuts and its Apps entry. The games, their saves and (unless the player asks) the
+downloaded builders stay. `tests/test_launcher_installer.py` checks all of it against temporary folders and a registry key
+of its own, and `publish.ps1` installs, draws and uninstalls the real one.
+
+## Game folders open the launcher
+
+The launcher writes where it runs from at every start: `%LOCALAPPDATA%\HookshotBuilder\launcher.txt` on Windows,
+`~/.local/share/hookshot/builder/launcher` on Linux (the AppImage's path, not its mount). Each game folder's starter
+(`hookshot.exe`, `builder/setup/setup.c` launch mode; `hookshot`, `builder/linux/hookshot-folder`) and the game's own update
+offer on Linux (`host/hos_update.c`) open it first, with `--launch <folder>` or `--update <folder> --tag <tag>`. A launcher
+moved or removed since is passed over for the installed builder, as before.
+
+Releases before the launcher put starters in their game folders that do not know it, so after each build or update the
+launcher puts in its own: the setup it ships on Windows, the script it carries on Linux.
+
 ## Smoke test without a screen
 
 Both scripts run the published launcher once with:

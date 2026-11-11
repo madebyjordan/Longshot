@@ -1,7 +1,7 @@
 # The Hookshot launcher for Windows (launcher/Hookshot), as players download it: published for win-x64 as
 # launcher/Hookshot/Publish.props says (NativeAOT), checked by drawing its window with no screen, and zipped:
 #
-#   scripts/launcher/publish.ps1             -> build/launcher/Hookshot-<version>-Windows-x64-portable.zip
+#   scripts/launcher/publish.ps1             -> build/launcher/Hookshot-<version>-Windows-x64-portable.zip and Hookshot-Installer.exe
 #   scripts/launcher/publish.ps1 -Jit        the JIT build instead (trimmed, ReadyToRun, one file): no C++ tools needed
 #   scripts/launcher/publish.ps1 -NoSmoke    without the check
 #
@@ -122,3 +122,59 @@ if (Test-Path $Zip) { Remove-Item $Zip }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [IO.Compression.ZipFile]::CreateFromDirectory($App, $Zip, [IO.Compression.CompressionLevel]::Optimal, $true)
 '{0}: {1:N1} MB' -f $Zip, ((Get-Item $Zip).Length / 1MB)
+
+# The installer (launcher/installer/installer.c): the program, then the zip above, then its length and "HSZIP001", which it reads
+# from its own end. It installs for this user only (%LOCALAPPDATA%\Programs\Hookshot), with shortcuts and a Settings > Apps entry
+$InstallerWork = Join-Path $B "$Rid\installer"
+New-Item -ItemType Directory -Force $InstallerWork | Out-Null
+Push-Location launcher/installer
+try {
+    & (Join-Path $Mingw 'bin\x86_64-w64-mingw32-windres.exe') installer.rc -O coff -o (Join-Path $InstallerWork 'installer_rc.o')
+    if ($LASTEXITCODE -ne 0) { throw "windres failed ($LASTEXITCODE)" }
+    # (the version through a header: PowerShell 5.1 drops the quotes of a -D"..." argument)
+    $header = Join-Path $InstallerWork 'version.h'
+    [IO.File]::WriteAllText($header, "#define HOOKSHOT_VERSION `"$Version`"`n")
+    & (Join-Path $Mingw 'bin\x86_64-w64-mingw32-clang.exe') -O2 -mwindows -municode -include $header installer.c `
+        (Join-Path $InstallerWork 'installer_rc.o') -lole32 -luuid -lshell32 -ladvapi32 '-Wl,--dependent-load-flag=0x800' `
+        -o (Join-Path $InstallerWork 'stub.exe')
+    if ($LASTEXITCODE -ne 0) { throw "the installer did not build ($LASTEXITCODE)" }
+} finally { Pop-Location }
+# (unversioned, as the maintainers named it: releases/latest/download/Hookshot-Installer.exe is always the latest)
+$Installer = Join-Path $B 'Hookshot-Installer.exe'
+$zipBytes = [IO.File]::ReadAllBytes($Zip)
+$out = [IO.File]::Create($Installer)
+try {
+    $stub = [IO.File]::ReadAllBytes((Join-Path $InstallerWork 'stub.exe'))
+    $out.Write($stub, 0, $stub.Length)
+    $out.Write($zipBytes, 0, $zipBytes.Length)
+    $len = [BitConverter]::GetBytes([UInt64]$zipBytes.Length)   # (little-endian on x64)
+    $out.Write($len, 0, 8)
+    $magic = [Text.Encoding]::ASCII.GetBytes('HSZIP001')
+    $out.Write($magic, 0, 8)
+} finally { $out.Dispose() }
+'{0}: {1:N1} MB' -f $Installer, ((Get-Item $Installer).Length / 1MB)
+
+# (the installer checked too: installed with no questions into a folder of its own, its shortcuts and Settings > Apps entry under
+# names of their own, the installed launcher drawn as above, then uninstalled by its own Uninstall.exe)
+if (-not $NoSmoke) {
+    $is = Join-Path $B "$Rid\install-smoke"
+    if (Test-Path $is) { Remove-Item -Recurse -Force $is }
+    $saved = @{}
+    $vars = @{ HOOKSHOT_INSTALL_DIR = (Join-Path $is 'Hookshot'); HOOKSHOT_INSTALL_LINKS = (Join-Path $is 'links');
+               HOOKSHOT_INSTALL_KEY = 'Hookshot-publish-smoke'; HOOKSHOT_SETUP_BASE = (Join-Path $is 'builders') }
+    foreach ($k in $vars.Keys) { $saved[$k] = [Environment]::GetEnvironmentVariable($k); [Environment]::SetEnvironmentVariable($k, $vars[$k]) }
+    try {
+        $p = Start-Process $Installer -ArgumentList '/S' -PassThru -Wait
+        if ($p.ExitCode -ne 0) { throw "installer smoke test: exit $($p.ExitCode)" }
+        $installed = Join-Path $vars.HOOKSHOT_INSTALL_DIR 'Hookshot.exe'
+        Test-Launcher $installed (Join-Path $B "smoke-$Rid-installed.png")
+        $p = Start-Process (Join-Path $vars.HOOKSHOT_INSTALL_DIR 'Uninstall.exe') -ArgumentList '/uninstall', '/S' -PassThru -Wait
+        $until = (Get-Date).AddSeconds(20)
+        while ((Test-Path $vars.HOOKSHOT_INSTALL_DIR) -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 200 }
+        if ($p.ExitCode -ne 0 -or (Test-Path $vars.HOOKSHOT_INSTALL_DIR)) { throw 'installer smoke test: the uninstall left the launcher' }
+        'installer smoke test: installed, drawn and uninstalled'
+    } finally {
+        foreach ($k in $vars.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k]) }
+        Remove-Item 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Hookshot-publish-smoke' -ErrorAction SilentlyContinue
+    }
+}
