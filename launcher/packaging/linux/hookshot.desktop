@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Hookshot
+Comment=Builds and plays Ocarina of Time for PC from your own copy of the game
+Exec=AppRun
+Icon=hookshot
+Categories=Game;
+Terminal=false
+StartupWMClass=Hookshot

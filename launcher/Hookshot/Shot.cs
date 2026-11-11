@@ -19,17 +19,26 @@ static class Shot
         if (act[0].Length > 0)
         {
             var doing = w.Act(act[0]);
+            // (HOOKSHOT_UI_AT=<0..1>: how far it is when the working state is drawn; 0.4 if not said)
+            var at = double.TryParse(Environment.GetEnvironmentVariable("HOOKSHOT_UI_AT"), System.Globalization.NumberStyles.Float,
+                                     System.Globalization.CultureInfo.InvariantCulture, out var a) ? a : 0.4;
             var drawn = false;
             Pump(() =>
             {
-                if (!drawn && w.Working is >= 0.4)
+                if (!drawn && w.Working >= at)
                 {
                     drawn = true;
                     if (act.Contains("details")) w.Act("details");
                     Save(w, Path.ChangeExtension(file, null) + "-working.png");
                 }
                 return doing.IsCompleted;
-            }, 120);
+            }, int.TryParse(Environment.GetEnvironmentVariable("HOOKSHOT_UI_WAIT"), out var wait) ? wait : 120);
+            // (still under way when the wait is over, HOOKSHOT_UI_WAIT=<seconds>: Cancel pressed, and drawn once it has stopped)
+            if (!doing.IsCompleted)
+            {
+                w.Act("cancel");
+                Pump(() => doing.IsCompleted, 30);
+            }
         }
         var ok = Save(w, file);
         w.Close();

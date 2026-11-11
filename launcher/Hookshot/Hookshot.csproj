@@ -44,4 +44,5 @@
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"
              Condition="'$(RuntimeIdentifier)' == 'linux-x64' Or ('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Linux')))" />
   </ItemGroup>
+  <Import Project="Publish.props" />
 </Project>

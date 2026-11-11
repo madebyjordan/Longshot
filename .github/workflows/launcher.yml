@@ -1,0 +1,143 @@
+# The Hookshot launcher (launcher/Hookshot, Avalonia): what a player will download, built for both systems as
+# docs/launcher.md says. Windows: scripts/launcher/publish.ps1, a portable zip. Linux: scripts/launcher/publish.sh, an
+# AppImage, built in Ubuntu 22.04, the oldest system it is for (glibc 2.35, as the Builder's AppImage). Both publish with
+# NativeAOT (launcher/Hookshot/Publish.props) and check what they made: the launcher draws its window with no screen
+# (HOOKSHOT_UI_SHOT) to a 960x640 PNG, with GitHub's releases made up, so no network and no game data is involved. The zip,
+# the AppImage and those PNGs are the run's artifacts. Nothing is released from here yet.
+name: Launcher
+
+on:
+  push:
+    # (branches only: a tag's push is the release workflows')
+    branches: ['**']
+    paths:
+      - 'launcher/**'
+      - 'scripts/launcher/**'
+      - '.github/workflows/launcher.yml'
+      # (the WPF launcher's rules the launcher compiles in: launcher/Hookshot/Hookshot.csproj)
+      - 'builder/HookshotBuilder/LaunchList.cs'
+      - 'builder/HookshotBuilder/LaunchWork.cs'
+      - 'builder/HookshotBuilder/GameEnv.cs'
+      - 'builder/HookshotBuilder/ShaderStep.cs'
+      - 'builder/HookshotBuilder/Strings.cs'
+      - 'builder/HookshotBuilder/BuildWorkers.cs'
+      - 'builder/HookshotBuilder/BuilderSettings.cs'
+      - 'builder/HookshotBuilder/Images/hookshot.png'
+      - 'builder/HookshotBuilder/Fonts/**'
+      # (the AppImage's appimagetool and runtime are the ones deps.sh pins)
+      - 'scripts/linux/deps.sh'
+  pull_request:
+    paths:
+      - 'launcher/**'
+      - 'scripts/launcher/**'
+      - '.github/workflows/launcher.yml'
+      # (the WPF launcher's rules the launcher compiles in: launcher/Hookshot/Hookshot.csproj)
+      - 'builder/HookshotBuilder/LaunchList.cs'
+      - 'builder/HookshotBuilder/LaunchWork.cs'
+      - 'builder/HookshotBuilder/GameEnv.cs'
+      - 'builder/HookshotBuilder/ShaderStep.cs'
+      - 'builder/HookshotBuilder/Strings.cs'
+      - 'builder/HookshotBuilder/BuildWorkers.cs'
+      - 'builder/HookshotBuilder/BuilderSettings.cs'
+      - 'builder/HookshotBuilder/Images/hookshot.png'
+      - 'builder/HookshotBuilder/Fonts/**'
+      # (the AppImage's appimagetool and runtime are the ones deps.sh pins)
+      - 'scripts/linux/deps.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: launcher-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  windows:
+    name: Windows (win-x64, portable zip)
+    runs-on: windows-2022
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # (the version is git describe's: the tags and the history since them)
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up .NET
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: '8.0.x'
+      # (llvm-mingw, for the HookshotBuilder-Setup.exe the zip holds, as windows-builder.yml gets it)
+      - name: llvm-mingw
+        shell: bash
+        run: echo "LLVM_MINGW=$(python -I scripts/release_parts.py llvm-mingw "$RUNNER_TEMP/llvm")" >> "$GITHUB_ENV"
+      # (a developer's build: the trim and AOT analyzers run here too, and warnings are errors)
+      - name: Build
+        run: dotnet build launcher/Hookshot/Hookshot.csproj --configuration Release
+      # (controller support: the mapping, the presses on a window with no screen, a run without SDL2)
+      - name: Tests
+        run: |
+          dotnet run --project launcher/tests/Hookshot.Tests --configuration Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      # (NativeAOT links with Visual Studio's C++ tools, which this runner has; then the smoke test and the zip)
+      - name: Publish, smoke test and zip
+        run: ./scripts/launcher/publish.ps1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Hookshot-launcher-windows
+          path: |
+            build/launcher/Hookshot-*-Windows-x64-portable.zip
+            build/launcher/smoke-*.png
+          if-no-files-found: error
+
+  linux:
+    name: Linux (linux-x64, AppImage)
+    runs-on: ubuntu-24.04
+    # (the oldest system the AppImage is for: what NativeAOT links against is this glibc)
+    container: ubuntu:22.04
+    timeout-minutes: 20
+    steps:
+      # (dpkg without an fsync per file: this container is thrown away after the job)
+      - name: Package installs without fsync
+        run: echo force-unsafe-io > /etc/dpkg/dpkg.cfg.d/force-unsafe-io
+      # (git and curl for the checkout and the downloads; clang and zlib1g-dev for NativeAOT; libicu70 for the .NET SDK
+      # itself; libfontconfig1, which Skia's library needs to load, as on every desktop system)
+      - name: System packages
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          for try in 1 2 3; do
+            apt-get update && apt-get install -y --no-install-recommends \
+              ca-certificates curl git clang zlib1g-dev libicu70 libfontconfig1 && break
+            [ "$try" = 3 ] && exit 1
+            sleep 20
+          done
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Set up .NET
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build
+        run: dotnet build launcher/Hookshot/Hookshot.csproj --configuration Release
+      - name: Tests
+        run: dotnet run --project launcher/tests/Hookshot.Tests --configuration Release
+      # (appimagetool and its runtime at deps.sh's pinned versions and checksums, into build-linux/deps)
+      - name: Publish, smoke test and AppImage
+        run: bash scripts/launcher/publish.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Hookshot-launcher-linux-x86_64
+          path: |
+            build/launcher/Hookshot-Launcher-*-x86_64.AppImage
+            build/launcher/smoke-*.png
+          if-no-files-found: error

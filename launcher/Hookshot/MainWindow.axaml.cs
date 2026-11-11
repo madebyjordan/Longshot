@@ -151,7 +151,8 @@ public partial class MainWindow : Window
             case "build": return StartBuild();
             case "update": return UpdateClick();
             case "details": ShowDetails(true); return Task.CompletedTask;
-            default: return Task.CompletedTask;
+            case "cancel": job?.Cancel(); return Task.CompletedTask;
+            default: return what.StartsWith("row:") ? Bring(what[4..], ask: false) : Task.CompletedTask;   // (a release's row)
         }
     }
 

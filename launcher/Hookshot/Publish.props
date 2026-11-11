@@ -1,0 +1,30 @@
+<!-- How the launcher is published (Hookshot.csproj imports this): it is the one thing a player downloads, so it must start fast and be
+     small. scripts/launcher/publish.ps1 (win-x64: a portable zip) and scripts/launcher/publish.sh (linux-x64: an AppImage) publish
+     it so; docs/launcher.md has the sizes and start times behind these choices.
+
+     NativeAOT: one native executable, with Skia's, HarfBuzz's and (on Windows) ANGLE's libraries beside it. win-x64: 42 MB, an
+     18 MB zip, ~80 ms to draw the window, against ~260 ms for the best JIT build and ~630 ms for a plain self-contained one.
+     It compiles for the system it is published on: win-x64 needs Visual Studio's C++ tools, linux-x64 clang and zlib1g-dev on
+     Linux, and the Linux executable needs the glibc of the system it was published on (CI: Ubuntu 22.04, glibc 2.35, as the
+     Builder's AppImage). Without those, -p:HookshotJit=true publishes the JIT build below, which also cross-publishes.
+
+     PublishAot also turns the trim and AOT analyzers on in every build, and the csproj treats warnings as errors: code that needs
+     reflection the trimmer cannot see fails `dotnet build`, not the player's launcher -->
+<Project>
+  <PropertyGroup Condition="'$(HookshotJit)' != 'true'">
+    <PublishAot>true</PublishAot>
+  </PropertyGroup>
+
+  <!-- The JIT build: self-contained, trimmed (Avalonia's own trimmer roots, compiled bindings), ReadyToRun (trimming drops the
+       framework's precompiled code: trimmed alone starts slower than untrimmed) and one file, with the native libraries beside it
+       (extracted from it, they would be written to a temporary folder on the first start). Not compressed: the zip and the
+       AppImage's squashfs compress it already, and a compressed single file starts ~100 ms slower -->
+  <PropertyGroup Condition="'$(HookshotJit)' == 'true'">
+    <SelfContained>true</SelfContained>
+    <PublishTrimmed>true</PublishTrimmed>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+  </PropertyGroup>
+</Project>

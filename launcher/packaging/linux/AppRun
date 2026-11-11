@@ -1,0 +1,11 @@
+#!/bin/sh
+# The Hookshot launcher's AppImage (scripts/launcher/publish.sh): the launcher, one native executable (NativeAOT), in
+# usr/lib/hookshot-launcher with Skia's, HarfBuzz's and SDL2's libraries beside it, which it loads from there itself.
+#   Hookshot.AppImage                  the launcher
+#   Hookshot.AppImage --launch <dir>   the launcher of that game folder
+# Nothing is put in LD_LIBRARY_PATH: the builders and games it starts get the system's libraries, not this image's.
+HERE="$(dirname "$(readlink -f "$0")")"
+# (the launcher's own path, for what it starts again or writes into a game folder: the AppImage, not its mount, which goes
+# when it exits)
+export HOOKSHOT_LAUNCHER_EXE="${APPIMAGE:-$HERE/AppRun}"
+exec "$HERE/usr/lib/hookshot-launcher/Hookshot" "$@"

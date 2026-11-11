@@ -47,7 +47,7 @@ static class ReleaseFeed
                 // was the WPF builder's own update)
                 var list = names.Contains(Setup) && names.Contains(SetupList);
                 var here = OperatingSystem.IsWindows() ? list
-                    : names.Contains(LinuxList) && names.Any(n => n != null && n.StartsWith("Hookshot") && n.EndsWith("x86_64.AppImage"));
+                    : names.Contains(LinuxList) && names.Any(n => n != null && n.StartsWith("Hookshot") && !n.StartsWith("Hookshot-Launcher") && n.EndsWith("x86_64.AppImage"));
                 found.Add(new ReleaseInfo(tag, pre, here, list));
                 if (latest == null && !pre) latest = tag;
             }

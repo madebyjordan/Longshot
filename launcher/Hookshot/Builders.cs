@@ -250,7 +250,9 @@ except Exception as e:
             if (Directory.Exists(part)) Directory.Delete(part, true);
             Directory.CreateDirectory(part);
             var image = Path.Combine(part, "Hookshot.AppImage");
-            if (await Fetch(tag, n => n.StartsWith("Hookshot") && n.EndsWith("x86_64.AppImage"), image, line, cancel) is { } why) return why;
+            // (the Builder's AppImage, not this launcher's own, Hookshot-Launcher-<version>-x86_64.AppImage)
+            if (await Fetch(tag, n => n.StartsWith("Hookshot") && !n.StartsWith("Hookshot-Launcher") && n.EndsWith("x86_64.AppImage"), image, line, cancel) is { } why)
+                return why;
             File.SetUnixFileMode(image, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             line("@@setup Unpacking the builder");
             using (var unpack = Process.Start(new ProcessStartInfo(image, "--appimage-extract")
