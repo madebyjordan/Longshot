@@ -1,4 +1,4 @@
-<!-- The launcher's main screen (Paper: "Hookshot v2", Launcher): the picture, dim; the wordmark and what the game is; Play (Build
+<!-- The launcher's main screen (Paper: "Hookshot v2", Launcher): the wordmark and what the game is; Play (Build
      while there is no game yet); the version under it; Credits, GitHub and Discord; Menu. The shapes are the WPF launcher's own
      path data (builder/HookshotBuilder/MainWindow.xaml), so the two draw the same -->
 <Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -59,8 +59,8 @@
   </Window.Styles>
 
   <Panel ClipToBounds="True">
-    <!-- the picture of the game, dim behind everything (it covers the window, cut evenly at the sides) -->
-    <Image Source="avares://Hookshot/Assets/launcher.jpg" Stretch="UniformToFill" Opacity="0.12" IsHitTestVisible="False"/>
+    <!-- (the page's own colour behind everything: no picture of the game ships, which is the game's art. Original art takes its
+         place here) -->
 
     <!-- the wordmark, in white, and what the game is -->
     <Viewbox Width="416" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,59,0,0" IsHitTestVisible="False">

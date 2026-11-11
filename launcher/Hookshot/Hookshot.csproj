@@ -25,7 +25,6 @@
     <Compile Include="..\..\builder\HookshotBuilder\LaunchWork.cs" Link="Shared\LaunchWork.cs" />
     <Compile Include="..\..\builder\HookshotBuilder\GameEnv.cs" Link="Shared\GameEnv.cs" />
     <Compile Include="..\..\builder\HookshotBuilder\ShaderStep.cs" Link="Shared\ShaderStep.cs" />
-    <AvaloniaResource Include="..\..\builder\HookshotBuilder\Images\launcher.jpg" Link="Assets\launcher.jpg" />
     <AvaloniaResource Include="..\..\builder\HookshotBuilder\Images\hookshot.png" Link="Assets\hookshot.png" />
     <AvaloniaResource Include="..\..\builder\HookshotBuilder\Fonts\Marcellus-Regular.ttf" Link="Assets\Fonts\Marcellus-Regular.ttf" />
   </ItemGroup>
