@@ -46,6 +46,36 @@
         <ControlTemplate><ContentPresenter Content="{TemplateBinding Content}"/></ControlTemplate>
       </Setter>
     </Style>
+    <!-- Update, beside Play: the same torn strip, quiet, the word in the accent -->
+    <Style Selector="Button.update">
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Panel Name="All">
+            <Path Name="Strip" Stretch="Fill" Fill="#2B2B2B" Data="{StaticResource StripShape}"/>
+            <ContentPresenter Content="{TemplateBinding Content}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Panel>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="Button.update:pointerover /template/ Path#Strip"><Setter Property="Fill" Value="#363636"/></Style>
+    <Style Selector="Button.update:pressed /template/ Path#Strip"><Setter Property="Fill" Value="#222222"/></Style>
+    <Style Selector="Button.update:disabled /template/ Panel#All"><Setter Property="Opacity" Value="0.2"/></Style>
+    <!-- the window's own buttons at its top right: minimise, maximise, close (red under the pointer) -->
+    <Style Selector="Button.title">
+      <Setter Property="Width" Value="46"/>
+      <Setter Property="Height" Value="32"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="Box" Background="Transparent">
+            <ContentPresenter Content="{TemplateBinding Content}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="Button.title:pointerover /template/ Border#Box"><Setter Property="Background" Value="#1AFFFFFF"/></Style>
+    <Style Selector="Button.title.close:pointerover /template/ Border#Box"><Setter Property="Background" Value="#C42B1C"/></Style>
+    <Style Selector="Button.title Path"><Setter Property="Stroke" Value="#E6FFFFFF"/><Setter Property="StrokeThickness" Value="1"/></Style>
     <Style Selector="Button.menu">
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template">
@@ -84,7 +114,22 @@
             IsDefault="True">
       <TextBlock Name="GoText" Text="Play" FontFamily="{StaticResource Serif}" FontSize="44" Foreground="#37291D"/>
     </Button>
-    <Button Name="Version" Classes="word" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,24"/>
+    <!-- Update, beside Play while a newer release is out (Play then plays the version in the folder) -->
+    <Button Name="UpdateGo" Classes="update" Width="150" Height="72" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,87"
+            IsVisible="False">
+      <Button.RenderTransform><TranslateTransform X="217"/></Button.RenderTransform>
+      <StackPanel>
+        <TextBlock Text="Update" FontFamily="{StaticResource Serif}" FontSize="30" Foreground="#D2823F" HorizontalAlignment="Center"/>
+        <TextBlock Name="UpdateGoTo" FontSize="12" Foreground="#D2823F" HorizontalAlignment="Center" Margin="0,-2,0,0"/>
+      </StackPanel>
+    </Button>
+    <Button Name="Version" Classes="word" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,24"
+            ToolTip.Tip="Open the game folder"/>
+
+    <!-- what the hidden programs said, beside the menu: Show details -->
+    <TextBox Name="Log" IsVisible="False" Margin="284,170,16,180" IsReadOnly="True" BorderThickness="1" BorderBrush="#303030"
+             Background="#E0000000" Foreground="#BCBCBC" FontFamily="Consolas,DejaVu Sans Mono,monospace" FontSize="11" Padding="10"
+             TextWrapping="NoWrap" ZIndex="2"/>
 
     <!-- Menu, at the top left -->
     <Button Name="MenuButton" Classes="menu" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="16,72,0,0">
@@ -122,6 +167,12 @@
                 Spacing="16" ZIndex="2">
       <Image Source="avares://Hookshot/Assets/hookshot.png" Width="16" Height="16" VerticalAlignment="Center"/>
       <TextBlock Text="Hookshot" FontSize="12" Foreground="#E6FFFFFF" VerticalAlignment="Center"/>
+    </StackPanel>
+
+    <StackPanel Name="TitleButtons" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" ZIndex="3">
+      <Button Name="MinButton" Classes="title" ToolTip.Tip="Minimise"><Path Data="M0,0.5 H10" Width="10" Height="1"/></Button>
+      <Button Name="MaxButton" Classes="title" ToolTip.Tip="Maximise"><Path Data="M0.5,0.5 H9.5 V9.5 H0.5 Z" Width="10" Height="10"/></Button>
+      <Button Name="CloseButton" Classes="title close" ToolTip.Tip="Close"><Path Data="M0,0 L10,10 M10,0 L0,10" Width="10" Height="10"/></Button>
     </StackPanel>
 
     <!-- ==== the menu: a panel from the left (Paper: "Build Menu", "Releases Menu", "Settings Menu"), opened by Menu ==== -->
@@ -163,13 +214,29 @@
               </StackPanel>
               <Border Margin="0,8,0,0" Padding="16" BorderBrush="#282828" BorderThickness="0,0,0,1">
                 <StackPanel>
-                  <Button Name="BuildGame" Classes="block" Background="#B86C00" Content="Build Game"/>
+                  <Panel>
+                    <Button Name="BuildGame" Classes="block" Background="#B86C00" Content="Build Game"/>
+                    <Panel Name="BuildBar" Height="38" IsVisible="False">
+                      <Border Background="#B4692A" CornerRadius="2"/>
+                      <Border Name="BuildFill" Background="#D2823F" HorizontalAlignment="Left" Width="0" CornerRadius="2"/>
+                      <TextBlock Name="BuildBarText" Classes="line" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Panel>
+                    <Button Name="BuildStopped" Classes="block" Background="#882D23" BorderBrush="#882D23" Content="Build stopped"
+                            ToolTip.Tip="Try again" IsVisible="False"/>
+                  </Panel>
                   <TextBlock Name="BuildLine" Classes="small" Foreground="#B8B8B8" HorizontalAlignment="Center" TextAlignment="Center"
                              TextWrapping="Wrap" Margin="0,8,0,0" IsVisible="False"/>
+                  <TextBlock Name="BuildWhy" Classes="why" Margin="0,8,0,0" MaxHeight="162" TextTrimming="CharacterEllipsis" IsVisible="False"/>
                 </StackPanel>
               </Border>
             </StackPanel>
-            <StackPanel Grid.Row="1">
+            <!-- (while it builds, or when it stopped: what the programs said, and Cancel or Copy error log) -->
+            <StackPanel Name="BuildLinks" Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,9" Spacing="8" IsVisible="False">
+              <Button Name="BuildDetails" Classes="link" Content="Show details"/>
+              <Button Name="BuildCancel" Classes="link" Content="Cancel"/>
+              <Button Name="BuildCopy" Classes="link" Content="Copy error log"/>
+            </StackPanel>
+            <StackPanel Name="BuildOptions" Grid.Row="1">
               <TextBlock Classes="small" Foreground="#B8B8B8" Text="Build options" Margin="16,0"/>
               <Grid Margin="16,8,16,0" Height="32">
                 <TextBlock Classes="small" Text="Language" VerticalAlignment="Center"/>
@@ -260,12 +327,29 @@
         <!-- ==== the foot: Check for updates; Update Available when there is one ==== -->
         <Border Grid.Row="2" BorderBrush="#282828" BorderThickness="0,1,0,0" Padding="16,16,16,0">
           <StackPanel>
-            <Button Name="CheckButton" Classes="block" Content="Check for updates"/>
-            <Button Name="UpdateButton" Classes="block" Background="#D2823F" Foreground="#000000" Content="Update Available" IsVisible="False"/>
+            <TextBlock Name="FootWhy" Classes="why" Margin="0,0,0,8" MaxHeight="108" TextTrimming="CharacterEllipsis" IsVisible="False"/>
+            <Panel>
+              <Button Name="CheckButton" Classes="block" Content="Check for updates"/>
+              <Button Name="UpdateButton" Classes="block" Background="#D2823F" Foreground="#000000" Content="Update Available" IsVisible="False"/>
+              <Panel Name="FootBar" Height="38" IsVisible="False">
+                <Border Background="#B4692A" CornerRadius="2"/>
+                <Border Name="FootFill" Background="#D2823F" HorizontalAlignment="Left" Width="0" CornerRadius="2"/>
+                <TextBlock Name="FootBarText" Classes="line" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Panel>
+              <Button Name="FootStopped" Classes="block" Background="#882D23" BorderBrush="#882D23" Content="Update stopped" ToolTip.Tip="Try again"
+                      IsVisible="False"/>
+            </Panel>
             <TextBlock Name="FootLine" Classes="line" FontSize="14" LineHeight="18" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,8,0,0"
                        IsVisible="False"/>
             <TextBlock Name="FootNote" Classes="small" Foreground="#B8B8B8" TextAlignment="Center" TextWrapping="Wrap" HorizontalAlignment="Center"
                        Margin="0,8,0,0" IsVisible="False"/>
+            <Button Name="FootCancel" Classes="link" Content="Cancel" Foreground="#BBBBBB" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center"
+                    Margin="0,8,0,0" IsVisible="False"/>
+            <StackPanel Name="FootLinks" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,0" Spacing="8" IsVisible="False">
+              <Button Name="FootDetails" Classes="link" Content="Show details"/>
+              <Button Name="FootCopy" Classes="link" Content="Copy error log"/>
+              <Button Name="FootDismiss" Classes="link" Content="Dismiss" ToolTip.Tip="Put this away: Check for updates in its place"/>
+            </StackPanel>
           </StackPanel>
         </Border>
       </Grid>

@@ -1,5 +1,6 @@
 <!-- The Hookshot launcher, one app for Windows and Linux (Avalonia 11.3, which builds with the .NET 8 SDK CI uses: Skia draws it the same on both). It shares the WPF launcher's
-     rules as they are (builder/HookshotBuilder: LaunchList.cs, LaunchWork.cs, GameEnv.cs, ShaderStep.cs) while it takes its place -->
+     rules as they are (builder/HookshotBuilder: LaunchList.cs, LaunchWork.cs, GameEnv.cs, ShaderStep.cs, Strings.cs, BuildWorkers.cs,
+     BuilderSettings.cs) while it takes its place -->
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -25,6 +26,9 @@
     <Compile Include="..\..\builder\HookshotBuilder\LaunchWork.cs" Link="Shared\LaunchWork.cs" />
     <Compile Include="..\..\builder\HookshotBuilder\GameEnv.cs" Link="Shared\GameEnv.cs" />
     <Compile Include="..\..\builder\HookshotBuilder\ShaderStep.cs" Link="Shared\ShaderStep.cs" />
+    <Compile Include="..\..\builder\HookshotBuilder\Strings.cs" Link="Shared\Strings.cs" />
+    <Compile Include="..\..\builder\HookshotBuilder\BuildWorkers.cs" Link="Shared\BuildWorkers.cs" />
+    <Compile Include="..\..\builder\HookshotBuilder\BuilderSettings.cs" Link="Shared\BuilderSettings.cs" />
     <AvaloniaResource Include="..\..\builder\HookshotBuilder\Images\hookshot.png" Link="Assets\hookshot.png" />
     <AvaloniaResource Include="..\..\builder\HookshotBuilder\Fonts\Marcellus-Regular.ttf" Link="Assets\Fonts\Marcellus-Regular.ttf" />
   </ItemGroup>

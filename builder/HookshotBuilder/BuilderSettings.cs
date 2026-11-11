@@ -16,11 +16,18 @@ sealed class BuilderSettings
 
     public static BuilderSettings? Load(string path)
     {
-        try { return System.Text.Json.JsonSerializer.Deserialize<BuilderSettings>(System.IO.File.ReadAllText(path)); }
+        try { return System.Text.Json.JsonSerializer.Deserialize(System.IO.File.ReadAllText(path), BuilderSettingsJson.Default.BuilderSettings); }
         catch (Exception) { return null; }
     }
+
+    /// (the file's text: written the same as by reflection, with no reflection, which the launcher's NativeAOT build has not got)
+    public string ToJson() => System.Text.Json.JsonSerializer.Serialize(this, BuilderSettingsJson.Default.BuilderSettings);
 
     /// (the updates, from the launcher's Update and from the --update start after a self-update, begin before ApplySettings sets
     /// the tick from these settings: they read the saved choice itself. None saved: prepared, as the tick's default)
     public static bool PrepareNow(string path) => Load(path)?.PrepareLater != true;
 }
+
+/// (the settings read and written by generated code, launcher/Hookshot is published with NativeAOT)
+[System.Text.Json.Serialization.JsonSerializable(typeof(BuilderSettings))]
+sealed partial class BuilderSettingsJson : System.Text.Json.Serialization.JsonSerializerContext { }

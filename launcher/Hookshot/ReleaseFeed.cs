@@ -10,7 +10,7 @@ namespace Hookshot.Launcher;
 static class ReleaseFeed
 {
     const string Releases = "https://api.github.com/repos/NotRexed/Hookshot/releases";
-    const string Zip = "HookshotBuilder.zip", Setup = "HookshotBuilder.exe", SetupList = "hookshot-setup.txt";
+    const string Setup = "HookshotBuilder.exe", SetupList = "hookshot-setup.txt", LinuxList = "hookshot-linux.txt";
 
     public static async Task<(List<ReleaseInfo> Releases, string? Latest)> Get()
     {
@@ -42,8 +42,13 @@ static class ReleaseFeed
                 var names = new HashSet<string?>();
                 if (r.TryGetProperty("assets", out var assets))
                     foreach (var asset in assets.EnumerateArray()) names.Add(asset.GetProperty("name").GetString());
+                // (what this launcher installs a release's builder from: on Windows the setup and its list, Builders.Install's engine
+                // mode; on Linux the list linux_update.py reads, and the AppImage for a first builder. A release with only the zip
+                // was the WPF builder's own update)
                 var list = names.Contains(Setup) && names.Contains(SetupList);
-                found.Add(new ReleaseInfo(tag, pre, names.Contains(Zip) || list, list));
+                var here = OperatingSystem.IsWindows() ? list
+                    : names.Contains(LinuxList) && names.Any(n => n != null && n.StartsWith("Hookshot") && n.EndsWith("x86_64.AppImage"));
+                found.Add(new ReleaseInfo(tag, pre, here, list));
                 if (latest == null && !pre) latest = tag;
             }
         }
