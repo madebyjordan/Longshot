@@ -1,0 +1,151 @@
+<!-- The launcher's own controls, as Paper's "Hookshot v2" draws them (the WPF launcher's styles, builder/HookshotBuilder/MainWindow.xaml,
+     one for one): the torn strip, the panel's buttons and boxes, its tabs, OFF | ON switches, small links and version rows -->
+<Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Styles.Resources>
+    <StreamGeometry x:Key="TickMark">M4.5,12.75 l6,6 l9,-13.5</StreamGeometry>
+    <StreamGeometry x:Key="DownloadMark">M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3</StreamGeometry>
+    <StreamGeometry x:Key="RefreshMark">M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99</StreamGeometry>
+    <StreamGeometry x:Key="DownMark">M19.5,8.25 l-7.5,7.5 l-7.5,-7.5</StreamGeometry>
+  </Styles.Resources>
+
+  <!-- (text: 16 in 20 for lines, 12 in 16 for the panel's small text, 13 in 18 in red for why something stopped) -->
+  <Style Selector="TextBlock.line"><Setter Property="FontSize" Value="16"/><Setter Property="LineHeight" Value="20"/><Setter Property="Foreground" Value="#FFFFFF"/></Style>
+  <Style Selector="TextBlock.small"><Setter Property="FontSize" Value="12"/><Setter Property="LineHeight" Value="16"/><Setter Property="Foreground" Value="#FFFFFF"/></Style>
+  <Style Selector="TextBlock.why">
+    <Setter Property="FontSize" Value="13"/><Setter Property="LineHeight" Value="18"/><Setter Property="Foreground" Value="#FF8373"/>
+    <Setter Property="TextWrapping" Value="Wrap"/>
+  </Style>
+
+  <!-- a button of the panel, 38 high with square-ish corners: Build Game, Check for updates, Update Available, the red one of a build or
+       update that stopped (Background and Foreground set where it is used) -->
+  <Style Selector="Button.block">
+    <Setter Property="Background" Value="#2B2B2B"/>
+    <Setter Property="BorderBrush" Value="#363636"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="Foreground" Value="#FFFFFF"/>
+    <Setter Property="FontSize" Value="16"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Height" Value="38"/>
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Panel Name="All">
+          <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="2"/>
+          <Border Name="Shine" Background="#FFFFFF" CornerRadius="2" Opacity="0"/>
+          <TextBlock Text="{TemplateBinding Content}" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{TemplateBinding FontSize}"
+                     FontWeight="{TemplateBinding FontWeight}" Foreground="{TemplateBinding Foreground}"/>
+        </Panel>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="Button.block:pointerover /template/ Border#Shine"><Setter Property="Opacity" Value="0.08"/></Style>
+  <Style Selector="Button.block:pressed /template/ Border#Shine"><Setter Property="Opacity" Value="0.03"/></Style>
+  <Style Selector="Button.block:disabled /template/ Panel#All"><Setter Property="Opacity" Value="0.4"/></Style>
+
+  <!-- a box that shows what is chosen and changes it when pressed: the game file, the folder -->
+  <Style Selector="Button.field">
+    <Setter Property="Height" Value="34"/>
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Name="Box" Background="#222222" BorderBrush="#5B5B5B" BorderThickness="1" Padding="12,0">
+          <ContentPresenter Content="{TemplateBinding Content}" VerticalAlignment="Center"/>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="Button.field:pointerover /template/ Border#Box"><Setter Property="BorderBrush" Value="#8A8A8A"/></Style>
+
+  <!-- a word that does something, small: Show details, Copy error log, Cancel -->
+  <Style Selector="Button.link">
+    <Setter Property="Foreground" Value="#B8B8B8"/>
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Background="Transparent">
+          <TextBlock Text="{TemplateBinding Content}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}"
+                     Foreground="{TemplateBinding Foreground}"/>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="Button.link:pointerover"><Setter Property="Foreground" Value="#FFFFFF"/></Style>
+
+  <!-- the panel's three tabs: the one shown on the accent -->
+  <Style Selector="RadioButton.tab">
+    <Setter Property="Foreground" Value="#C5C5C5"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Name="Box" Background="Transparent" CornerRadius="2" Padding="0,4">
+          <TextBlock Classes="line" Text="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" HorizontalAlignment="Center"/>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="RadioButton.tab:pointerover"><Setter Property="Foreground" Value="#FFFFFF"/></Style>
+  <Style Selector="RadioButton.tab:checked"><Setter Property="Foreground" Value="#FFFFFF"/></Style>
+  <Style Selector="RadioButton.tab:checked /template/ Border#Box"><Setter Property="Background" Value="#B86C00"/></Style>
+
+  <!-- a setting that is on or off: OFF | ON, the one it is on the accent -->
+  <Style Selector="ToggleButton.switch">
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+    <Setter Property="HorizontalAlignment" Value="Right"/>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Background="#222222" BorderBrush="#5B5B5B" BorderThickness="1" Padding="4,5">
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <Border Name="Off" Background="#B86C00" Height="20" Padding="4,0">
+              <TextBlock Name="OffText" Classes="small" Text="OFF" VerticalAlignment="Center"/>
+            </Border>
+            <Border Name="On" Background="Transparent" Height="20" Padding="4,0">
+              <TextBlock Name="OnText" Classes="small" Text="ON" Foreground="#B0B0B0" VerticalAlignment="Center"/>
+            </Border>
+          </StackPanel>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="ToggleButton.switch:checked /template/ Border#Off"><Setter Property="Background" Value="Transparent"/></Style>
+  <Style Selector="ToggleButton.switch:checked /template/ TextBlock#OffText"><Setter Property="Foreground" Value="#B0B0B0"/></Style>
+  <Style Selector="ToggleButton.switch:checked /template/ Border#On"><Setter Property="Background" Value="#B86C00"/></Style>
+  <Style Selector="ToggleButton.switch:checked /template/ TextBlock#OnText"><Setter Property="Foreground" Value="#FFFFFF"/></Style>
+  <Style Selector="ToggleButton.switch:disabled"><Setter Property="Opacity" Value="0.4"/></Style>
+
+  <!-- a row of the panel's list: a version (its ink, LaunchList.cs: the one Play plays in green, one nothing can bring dim, the others
+       quiet), the fold of the older ones; white under the pointer -->
+  <Style Selector="Button.row">
+    <Setter Property="Foreground" Value="#BCBCBC"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Background="Transparent"><ContentPresenter Content="{TemplateBinding Content}"/></Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="Button.row.fold"><Setter Property="Foreground" Value="#8E8E8E"/></Style>
+  <Style Selector="Button.row.dim"><Setter Property="Foreground" Value="#747474"/><Setter Property="Cursor" Value="Arrow"/></Style>
+  <Style Selector="Button.row.ticked"><Setter Property="Foreground" Value="#ACDF75"/></Style>
+  <Style Selector="Button.row:pointerover"><Setter Property="Foreground" Value="#FFFFFF"/></Style>
+  <Style Selector="Path.mark">
+    <Setter Property="StrokeThickness" Value="1.5"/><Setter Property="StrokeLineCap" Value="Round"/><Setter Property="StrokeJoin" Value="Round"/>
+  </Style>
+
+  <!-- a build option picked from a list, at the right of its row -->
+  <Style Selector="ComboBox.drop">
+    <Setter Property="HorizontalAlignment" Value="Right"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+    <Setter Property="MinWidth" Value="110"/>
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="Foreground" Value="#D6D6D6"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+  </Style>
+</Styles>

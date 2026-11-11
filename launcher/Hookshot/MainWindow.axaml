@@ -1,7 +1,7 @@
 <!-- The launcher's main screen (Paper: "Hookshot v2", Launcher): the wordmark and what the game is; Play (Build
      while there is no game yet); the version under it; Credits, GitHub and Discord; Menu. The shapes are the WPF launcher's own
      path data (builder/HookshotBuilder/MainWindow.xaml), so the two draw the same -->
-<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:hb="using:HookshotBuilder"
         x:Class="Hookshot.Launcher.MainWindow" Title="Hookshot" Width="960" Height="640" MinWidth="960" MinHeight="640"
         Background="#121212" WindowStartupLocation="CenterScreen" Icon="avares://Hookshot/Assets/hookshot.png"
         RenderOptions.TextRenderingMode="Antialias">
@@ -87,11 +87,12 @@
     <Button Name="Version" Classes="word" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,24"/>
 
     <!-- Menu, at the top left -->
-    <Button Classes="menu" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="16,72,0,0">
+    <Button Name="MenuButton" Classes="menu" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="16,72,0,0">
       <StackPanel Orientation="Horizontal" Spacing="8">
         <Path Data="M3.125,5.625 h13.75 M3.125,10 h13.75 M3.125,14.375 h13.75" Stroke="#FFFFFF" StrokeThickness="1.5"
               StrokeLineCap="Round" Width="20" Height="20" VerticalAlignment="Center"/>
         <TextBlock Text="Menu" FontSize="16" Foreground="#FFFFFF" VerticalAlignment="Center"/>
+        <Ellipse Name="MenuDot" Width="8" Height="8" Fill="#D2823F" VerticalAlignment="Center" IsVisible="False"/>
       </StackPanel>
     </Button>
 
@@ -116,5 +117,158 @@
         </Canvas>
       </Button>
     </StackPanel>
+    <!-- the window's name, at the left of its top 48, as the drawing has it -->
+    <StackPanel Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Left" Height="48" Margin="16,0,0,0" IsHitTestVisible="False"
+                Spacing="16" ZIndex="2">
+      <Image Source="avares://Hookshot/Assets/hookshot.png" Width="16" Height="16" VerticalAlignment="Center"/>
+      <TextBlock Text="Hookshot" FontSize="12" Foreground="#E6FFFFFF" VerticalAlignment="Center"/>
+    </StackPanel>
+
+    <!-- ==== the menu: a panel from the left (Paper: "Build Menu", "Releases Menu", "Settings Menu"), opened by Menu ==== -->
+    <Border Name="Bar" IsVisible="False" HorizontalAlignment="Left" Width="268" Background="#F5000000" BorderBrush="#303030" BorderThickness="0,0,1,0"
+            ZIndex="1">
+      <Grid Margin="0,42,0,12" RowDefinitions="Auto,*,Auto">
+        <Button Name="CloseMenu" Classes="menu" Height="40" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Path Data="M6,18 L18,6 M6,6 l12,12" Stroke="#FFFFFF" StrokeThickness="1.5" StrokeLineCap="Round" Width="24" Height="24"/>
+            <TextBlock Classes="line" Text="Close menu" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+
+        <Grid Grid.Row="1" Margin="0,8,0,8" RowDefinitions="Auto,*">
+          <!-- the three tabs (each as wide as its word and 12 either side, as drawn: 60, 84 and 81 of the 225) -->
+          <Border Margin="16,0" Background="#2B2B2B" BorderBrush="#363636" BorderThickness="1" CornerRadius="2" Padding="4">
+            <Grid ColumnDefinitions="60*,84*,81*">
+              <RadioButton Name="TabBuild" Classes="tab" Content="Build" GroupName="Tabs"/>
+              <RadioButton Name="TabReleases" Grid.Column="1" Classes="tab" Content="Releases" GroupName="Tabs"/>
+              <RadioButton Name="TabSettings" Grid.Column="2" Classes="tab" Content="Settings" GroupName="Tabs"/>
+            </Grid>
+          </Border>
+
+          <!-- ==== Build: the game file, the folder, Build Game; the build's options under them ==== -->
+          <Grid Name="BuildPage" Grid.Row="1" Margin="0,12,0,0" RowDefinitions="*,Auto">
+            <StackPanel>
+              <StackPanel Margin="16,0">
+                <TextBlock Classes="small" Text="Game File"/>
+                <Button Name="SourceChange" Classes="field" Margin="0,8,0,0">
+                  <TextBlock Name="SourceText" Classes="small" Foreground="#D6D6D6" Text="Browse files" HorizontalAlignment="Center"
+                             TextTrimming="CharacterEllipsis"/>
+                </Button>
+              </StackPanel>
+              <StackPanel Margin="16,8,16,0">
+                <TextBlock Classes="small" Text="Install to"/>
+                <Button Name="OutChange" Classes="field" Margin="0,8,0,0">
+                  <TextBlock Name="OutText" Classes="small" Foreground="#D6D6D6" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                </Button>
+              </StackPanel>
+              <Border Margin="0,8,0,0" Padding="16" BorderBrush="#282828" BorderThickness="0,0,0,1">
+                <StackPanel>
+                  <Button Name="BuildGame" Classes="block" Background="#B86C00" Content="Build Game"/>
+                  <TextBlock Name="BuildLine" Classes="small" Foreground="#B8B8B8" HorizontalAlignment="Center" TextAlignment="Center"
+                             TextWrapping="Wrap" Margin="0,8,0,0" IsVisible="False"/>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+            <StackPanel Grid.Row="1">
+              <TextBlock Classes="small" Foreground="#B8B8B8" Text="Build options" Margin="16,0"/>
+              <Grid Margin="16,8,16,0" Height="32">
+                <TextBlock Classes="small" Text="Language" VerticalAlignment="Center"/>
+                <ComboBox Name="LanguageBox" Classes="drop"/>
+              </Grid>
+              <Grid Margin="16,8,16,0" Height="32">
+                <TextBlock Classes="small" Text="Workers" VerticalAlignment="Center"/>
+                <ComboBox Name="WorkerBox" Classes="drop"/>
+              </Grid>
+              <Grid Margin="16,8,16,0" Height="32">
+                <TextBlock Classes="small" Text="Memory" VerticalAlignment="Center"/>
+                <ComboBox Name="MemoryBox" Classes="drop"/>
+              </Grid>
+            </StackPanel>
+          </Grid>
+
+          <!-- ==== Releases: the versions, newest first ==== -->
+          <ScrollViewer Name="ReleasesPage" Grid.Row="1" Margin="0,12,0,0" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel>
+              <ItemsControl Name="ReleaseList">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="hb:LaunchChoice">
+                    <Button Classes="row" Classes.ticked="{Binding Ticked}" Classes.dim="{Binding Dim}" ToolTip.Tip="{Binding Tip}" Margin="0,0,0,4"
+                            Tag="{Binding}">
+                      <Grid Height="40" Margin="16,0" ColumnDefinitions="*,24">
+                        <TextBlock Classes="line" Text="{Binding Label}" Margin="0,0,8,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                   Foreground="{Binding $parent[Button].Foreground}"/>
+                        <Panel Grid.Column="1" Width="24" Height="24" VerticalAlignment="Center">
+                          <Path Classes="mark" Data="{StaticResource TickMark}" IsVisible="{Binding Ticked}" Stroke="{Binding $parent[Button].Foreground}"/>
+                          <Path Classes="mark" Data="{StaticResource DownloadMark}" IsVisible="{Binding Arrow}" Stroke="{Binding $parent[Button].Foreground}"/>
+                          <Path Classes="mark" Data="{StaticResource RefreshMark}" IsVisible="{Binding Busy}" Stroke="#BBBBBB"/>
+                        </Panel>
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <!-- (the releases after the five newest, in one row until it is pressed) -->
+              <Button Name="FoldRow" Classes="row fold" IsVisible="False">
+                <Grid Height="40" Margin="16,0" ColumnDefinitions="*,24">
+                  <TextBlock Name="FoldText" Classes="line" VerticalAlignment="Center" Foreground="{Binding $parent[Button].Foreground}"/>
+                  <Panel Grid.Column="1" Width="24" Height="24" VerticalAlignment="Center">
+                    <Path Name="FoldMark" Classes="mark" Data="{StaticResource DownMark}" Stroke="{Binding $parent[Button].Foreground}"/>
+                  </Panel>
+                </Grid>
+              </Button>
+              <TextBlock Name="ReleasesNote" Classes="small" Foreground="#B0B0B0" Margin="16,8,16,0" TextWrapping="Wrap" IsVisible="False"/>
+            </StackPanel>
+          </ScrollViewer>
+
+          <!-- ==== Settings: what is on or off ==== -->
+          <StackPanel Name="SettingsPage" Grid.Row="1" Margin="16,12,16,0" IsVisible="False" Spacing="12">
+            <Grid>
+              <TextBlock Classes="small" Text="Prepare Shaders" VerticalAlignment="Center"/>
+              <ToggleButton Name="PrepareTick" Classes="switch" IsChecked="True"
+                            ToolTip.Tip="Prepares the game's shaders at the end of the build, a few minutes (longer on some GPUs). Off, the game prepares them at its first start, behind a black window."/>
+            </Grid>
+            <Grid>
+              <TextBlock Classes="small" Text="Enable DLSS" VerticalAlignment="Center"/>
+              <ToggleButton Name="DlssTick" Classes="switch"
+                            ToolTip.Tip="For NVIDIA RTX graphics cards. The build downloads NVIDIA's SDK under NVIDIA's license. NVIDIA's files stay on this PC: never share a game folder built with them."/>
+            </Grid>
+            <Grid>
+              <TextBlock Classes="small" Text="Enable FSR 4" VerticalAlignment="Center"/>
+              <ToggleButton Name="FsrTick" Classes="switch"
+                            ToolTip.Tip="For AMD Radeon graphics cards. The build downloads AMD's runtime under AMD's license (asked when it is switched on). It is chosen in the game's Insert menu, as the Upscaler."/>
+            </Grid>
+            <StackPanel Spacing="4">
+              <Grid>
+                <TextBlock Classes="small" Text="Lower memory use" VerticalAlignment="Center"/>
+                <ToggleButton Name="LowMemTick" Classes="switch"
+                              ToolTip.Tip="The game neither loads nor saves its pipeline cache file (mkw_vk_pipelines.bin), which the graphics driver holds in memory for the whole session: up to about 3 GB less memory. On a fresh driver cache the game may stutter more the first time it draws something. The file stays: switched off again, the game uses it as before."/>
+              </Grid>
+              <TextBlock Name="LowMemNote" Classes="small" Foreground="#B0B0B0" Width="189" HorizontalAlignment="Left" TextWrapping="Wrap" IsVisible="False"/>
+            </StackPanel>
+            <StackPanel Spacing="4">
+              <Grid>
+                <TextBlock Classes="small" Text="Enable pre-releases" VerticalAlignment="Center"/>
+                <ToggleButton Name="PreTick" Classes="switch"/>
+              </Grid>
+              <TextBlock Classes="small" Foreground="#B0B0B0" Width="189" HorizontalAlignment="Left" TextWrapping="Wrap">
+                <Run Text="These versions contain the latest experimental features and changes, "/><Run Text="bugs may occur." Foreground="#E3B955"/>
+              </TextBlock>
+            </StackPanel>
+          </StackPanel>
+        </Grid>
+
+        <!-- ==== the foot: Check for updates; Update Available when there is one ==== -->
+        <Border Grid.Row="2" BorderBrush="#282828" BorderThickness="0,1,0,0" Padding="16,16,16,0">
+          <StackPanel>
+            <Button Name="CheckButton" Classes="block" Content="Check for updates"/>
+            <Button Name="UpdateButton" Classes="block" Background="#D2823F" Foreground="#000000" Content="Update Available" IsVisible="False"/>
+            <TextBlock Name="FootLine" Classes="line" FontSize="14" LineHeight="18" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,8,0,0"
+                       IsVisible="False"/>
+            <TextBlock Name="FootNote" Classes="small" Foreground="#B8B8B8" TextAlignment="Center" TextWrapping="Wrap" HorizontalAlignment="Center"
+                       Margin="0,8,0,0" IsVisible="False"/>
+          </StackPanel>
+        </Border>
+      </Grid>
+    </Border>
   </Panel>
 </Window>

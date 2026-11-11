@@ -14,7 +14,7 @@ public partial class App : Application
         {
             var args = desktop.Args ?? Array.Empty<string>();
             var folder = args.SkipWhile(a => a != "--launch").Skip(1).FirstOrDefault() ?? "";
-            desktop.MainWindow = new MainWindow(GameFolder.Read(folder));
+            desktop.MainWindow = new MainWindow(GameFolder.Read(folder), MainWindow.Preview.FromEnvironment());
         }
         base.OnFrameworkInitializationCompleted();
     }
