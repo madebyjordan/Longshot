@@ -201,7 +201,7 @@ public partial class MainWindow : Window
         FootDetails.Click += (_, _) => ShowDetails(!detailsShown);
         BuildCopy.Click += async (_, _) => await CopyReport(BuildCopy);
         FootCopy.Click += async (_, _) => await CopyReport(FootCopy);
-        FootDismiss.Click += (_, _) => Dismiss();
+        NoteClose.Click += (_, _) => CloseNote();
         AddHandler(Button.ClickEvent, LinkClick);
         AddHandler(Button.ClickEvent, RowClick);
         AddHandler(DragDrop.DropEvent, Dropped);
@@ -245,6 +245,7 @@ public partial class MainWindow : Window
             case "update": return UpdateClick();
             case "details": ShowDetails(true); return Task.CompletedTask;
             case "cancel": job?.Cancel(); return Task.CompletedTask;
+            case "closenote": CloseNote(); return Task.CompletedTask;
             case "share": return ShareClick();
             case "rebuild": return folder.Version is { } v ? Bring(v, ask: false, rebuild: true) : Task.CompletedTask;
             default: return what.StartsWith("row:") ? Bring(what[4..], ask: false) : Task.CompletedTask;   // (a release's row)
@@ -461,8 +462,11 @@ public partial class MainWindow : Window
         // ---- the note at the bottom left: a Hookshot release out (Update to it), the launcher's own update, one under way (its bar,
         // step and time left, Cancel), one that stopped (why, Try again, the details) ----
         CheckButton.IsEnabled = !busy && !checking;
-        var launcherOut = launcherUpdate != null && !available && !footWorking && !footStopped;
+        var launcherOut = launcherUpdate != null && !available && !footWorking && !footStopped && !SameTag(closedLauncher, launcherUpdate);
+        // (a release out, unless its note was closed: the note only; it can still be brought from Releases)
+        available = available && !SameTag(closedRelease, latest);
         Note.IsVisible = available || footWorking || footStopped || launcherOut;
+        NoteClose.IsVisible = !footWorking;
         NoteTitle.Text = footWorking ? job!.Work.Title[..job.Work.Title.LastIndexOf(" - ", StringComparison.Ordinal)]
             : footStopped ? stoppedJob!.Work.StoppedShort
             : available ? $"Hookshot {VersionName(latest!)} is out!"
@@ -984,6 +988,20 @@ public partial class MainWindow : Window
     }
 
     /// (Dismiss: the update that stopped put away, Check for updates in its place)
+    /// The note's close button: a stop put away; a Hookshot release or the launcher's own update not shown again for that
+    /// version while the window is open (a newer one shows it again; the release can still be brought from Releases)
+    void CloseNote()
+    {
+        if (stoppedJob is { FirstBuild: false }) Dismiss();
+        else
+        {
+            if (Available && !SameTag(closedRelease, latest)) closedRelease = latest;
+            else if (launcherUpdate != null) closedLauncher = launcherUpdate;
+            Render();
+        }
+    }
+    string? closedRelease, closedLauncher;
+
     void Dismiss()
     {
         (stoppedJob, stoppedWhy) = (null, null);

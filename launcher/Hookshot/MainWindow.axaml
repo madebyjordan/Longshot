@@ -86,6 +86,19 @@
     <Style Selector="Button.pill:pointerover /template/ Border#Box"><Setter Property="Background" Value="#FAC46C"/></Style>
     <Style Selector="Button.pill:pressed /template/ Border#Box"><Setter Property="Background" Value="#E9A43C"/></Style>
     <Style Selector="Button.pill:disabled"><Setter Property="Opacity" Value="0.5"/></Style>
+    <!-- the note's close button: a small cross in the note's ink, a soft circle under the pointer -->
+    <Style Selector="Button.noteclose">
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="Box" Width="22" Height="22" CornerRadius="11" Background="Transparent">
+            <ContentPresenter Content="{TemplateBinding Content}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="Button.noteclose:pointerover /template/ Border#Box"><Setter Property="Background" Value="#2637291D"/></Style>
+    <Style Selector="Button.noteclose:pressed /template/ Border#Box"><Setter Property="Background" Value="#4037291D"/></Style>
     <!-- a word in the note that does something: underlined, in the note's ink -->
     <Style Selector="Button.inked">
       <Setter Property="Cursor" Value="Hand"/>
@@ -223,7 +236,8 @@
       <Path Stretch="Fill" Height="3" Width="{Binding #NoteBody.Bounds.Width}" Fill="{StaticResource NoteFill}" Data="{StaticResource NoteTopEdge}"/>
       <Border Name="NoteBody" Grid.Row="1" Background="{StaticResource NoteFill}" MinHeight="101" Padding="14,10">
       <StackPanel Spacing="7" VerticalAlignment="Center">
-        <TextBlock Name="NoteTitle" Classes="ink" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
+        <!-- (room either side of the title for the close button, so it stays in the middle) -->
+        <TextBlock Name="NoteTitle" Classes="ink" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="18,0"/>
         <TextBlock Name="FootWhy" Classes="ink" FontSize="12" LineHeight="16" Foreground="#7A2418" TextAlignment="Center" TextWrapping="Wrap"
                    MaxLines="4" TextTrimming="CharacterEllipsis" IsVisible="False"/>
         <Panel Name="FootBar" Height="20" IsVisible="False">
@@ -236,15 +250,17 @@
         <Button Name="FootStopped" Classes="pill" Content="Try again" IsVisible="False"/>
         <Button Name="NoteLink" Classes="inked" Content="see what's new" IsVisible="False"/>
         <Button Name="FootCancel" Classes="inked" Content="Cancel" IsVisible="False"/>
-        <StackPanel Name="FootLinks" HorizontalAlignment="Center" Spacing="4" IsVisible="False">
-          <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10">
-            <Button Name="FootDetails" Classes="inked" Content="Show details" FontSize="12"/>
-            <Button Name="FootCopy" Classes="inked" Content="Copy error log" FontSize="12"/>
-          </StackPanel>
-          <Button Name="FootDismiss" Classes="inked" Content="Dismiss" FontSize="12" ToolTip.Tip="Put this away"/>
+        <StackPanel Name="FootLinks" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10" IsVisible="False">
+          <Button Name="FootDetails" Classes="inked" Content="Show details" FontSize="12"/>
+          <Button Name="FootCopy" Classes="inked" Content="Copy error log" FontSize="12"/>
         </StackPanel>
       </StackPanel>
       </Border>
+      <!-- the close button at the top right: the note put away (not while an update runs: Cancel is there) -->
+      <Button Name="NoteClose" Grid.Row="1" Classes="noteclose" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,3,5,0"
+              ToolTip.Tip="Close" AutomationProperties.Name="Close">
+        <Path Data="M0,0 L8,8 M8,0 L0,8" Width="8" Height="8" Stroke="#37291D" StrokeThickness="1.5" StrokeLineCap="Round"/>
+      </Button>
       <Path Grid.Row="2" Stretch="Fill" Height="4.2" Width="{Binding #NoteBody.Bounds.Width}" Fill="{StaticResource NoteFill}" Data="{StaticResource NoteBottomEdge}"/>
     </Grid>
 
