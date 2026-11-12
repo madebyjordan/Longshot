@@ -39,6 +39,11 @@ static class Builders
 
     public static string SettingsPath => Path.Combine(Base, "builder-settings.json");
 
+    /// (development) HOOKSHOT_DUMMY_RELEASES=<url ending in />: made-up releases served on this PC (scripts/launcher/live.ps1 and
+    /// the test rig, tests/builder_launcher/rig): a release's builder is installed from <url>list-<tag>.txt, and nothing is
+    /// downloaded from anywhere else (no first builder from GitHub, no AMD FSR runtime). Null: the real releases
+    public static string? DummyReleases => Environment.GetEnvironmentVariable("HOOKSHOT_DUMMY_RELEASES") is { Length: > 0 } u ? u : null;
+
     /// (Windows: the Builder home to a child, BuilderHome.PassTo, as the WPF builder passes it to the setup and make_game.py)
     static void PassHome(ProcessStartInfo si)
     {
@@ -180,6 +185,7 @@ static class Builders
             si = new ProcessStartInfo(setup);
             foreach (var a in new[] { "--engine", "--tag", tag }) si.ArgumentList.Add(a);
             PassHome(si);   // (the release goes beside the versions of this home, a portable one too)
+            if (DummyReleases is { } dummy) si.Environment["HOOKSHOT_SETUP_LIST"] = dummy + "list-" + tag + ".txt";
         }
         else
         {
@@ -271,6 +277,7 @@ except Exception as e:
     /// at its root). Lines as the setup's. Null when done, else why not
     public static async Task<string?> Bootstrap(string tag, Action<string> line, CancellationToken cancel)
     {
+        if (DummyReleases != null) return $"Made-up releases (HOOKSHOT_DUMMY_RELEASES): {tag} has no builder here, and nothing is downloaded from GitHub.";
         var downloads = Path.Combine(Base, "downloads");
         var versions = Path.Combine(Base, "versions");
         var dest = Path.Combine(versions, tag);

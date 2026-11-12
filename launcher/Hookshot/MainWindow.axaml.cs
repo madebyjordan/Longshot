@@ -896,7 +896,8 @@ public partial class MainWindow : Window
         if (j.Work.Done != null && ffxAfter)
         {
             ffxAfter = false;
-            var why = await FfxRuntime.Ensure(Builders.FfxSdk) ?? FfxRuntime.CopyTo(Builders.FfxSdk, target);
+            var why = Builders.DummyReleases != null ? "not fetched with made-up releases (HOOKSHOT_DUMMY_RELEASES)"
+                : await FfxRuntime.Ensure(Builders.FfxSdk) ?? FfxRuntime.CopyTo(Builders.FfxSdk, target);
             if (why != null) j.Log.AppendLine("AMD FSR 4: " + why);
         }
         if (j.Work.Done != null)

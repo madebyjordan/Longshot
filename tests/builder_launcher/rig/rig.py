@@ -39,12 +39,21 @@ python_zip = f"HookshotBuilder-python-{python_sha[:12]}.zip"
 os.replace(tmp, os.path.join(www, python_zip))
 
 
+# (the files beside HookshotBuilder.exe that the setup checks are there and not empty before it takes a builder as installed,
+# builder/setup/setup.c builder_ready: a self-contained .NET runtime. Stand-ins, never run)
+RUNTIME = ("HookshotBuilder.dll", "HookshotBuilder.deps.json", "HookshotBuilder.runtimeconfig.json", "hostfxr.dll", "hostpolicy.dll",
+           "coreclr.dll", "System.Private.CoreLib.dll", "WindowsBase.dll", "PresentationCore.dll", "PresentationFramework.dll",
+           "PresentationNative_cor3.dll", "wpfgfx_cor3.dll")
+
+
 def release(tag, python_part=True):
-    tmp = zipped("app-" + tag, {
+    files = {
         "HookshotBuilder/HookshotBuilder.exe": fake,   # (only its being there is checked)
         "HookshotBuilder/tools/version.txt": (tag + "\n").encode(),
         "HookshotBuilder/tools/nx2/make_game.py": b"# the test rig's stand-in: fakepy.exe plays this part\n",
-    })
+    }
+    files.update({"HookshotBuilder/" + name: b"the test rig's stand-in\n" for name in RUNTIME})
+    tmp = zipped("app-" + tag, files)
     app_sha = sha(tmp)
     app = os.path.join(www, f"app-{tag}.zip")
     os.replace(tmp, app)
@@ -67,6 +76,8 @@ open(os.path.join(tools, "python", "readme.txt"), "w").write("the test rig's sta
 open(os.path.join(tools, "nx2", "make_game.py"), "w").write("# stand-in\n")
 open(os.path.join(tools, "version.txt"), "w").write("v2.1.0\n")
 shutil.copy(fake, os.path.join(base, "versions", "v2.1.0", "HookshotBuilder", "HookshotBuilder.exe"))
+for name in RUNTIME:
+    open(os.path.join(base, "versions", "v2.1.0", "HookshotBuilder", name), "w").write("the test rig's stand-in\n")
 open(os.path.join(base, "versions", "v2.1.0", "installed.txt"), "w").write("v2.1.0")
 open(os.path.join(base, "versions", "v2.1.0", "parts.txt"), "w", newline="\n").write(python_sha + "\n")
 open(os.path.join(base, "versions", "current.txt"), "w").write("v2.1.0")

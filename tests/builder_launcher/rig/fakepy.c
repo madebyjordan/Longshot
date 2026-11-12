@@ -3,7 +3,8 @@
    from game files, or --check --nup <file>), it says what make_game.py says while it builds (@@stage, @@progress, @@plan,
    @@file, @@eta, @@done) in a few seconds, and writes the folder's hookshot_version.txt as the version in
    <tools>\version.txt (a build from game files makes the folder, with a file where the game would be). It reads no game
-   file. FAKE_STEP_MS: the wait between its lines (150). FAKE_FAIL=1: it stops half way with an error. */
+   file. FAKE_STEP_MS: the wait between its lines (150). FAKE_FAIL=1: it stops half way with an error. FAKE_GAME_EXE: a file
+   copied in as the game a build from game files makes (scripts/launcher/live.ps1's stand-in game), else an empty one. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -53,8 +54,11 @@ int main(int argc, char **argv) {
         static const char *const parts[] = {"", "\\bin", "\\romfs", "\\.hookshot_exefs"};
         for (int i = 0; i < 4; i++) { snprintf(path, sizeof path, "%s%s", folder, parts[i]); CreateDirectoryA(path, NULL); }
         snprintf(path, sizeof path, "%s\\bin\\hookshot.exe", folder);
-        FILE *game = fopen(path, "w");
-        if (game) fclose(game);
+        const char *stand_in = getenv("FAKE_GAME_EXE");
+        if (!stand_in || !*stand_in || !CopyFileA(stand_in, path, FALSE)) {
+            FILE *game = fopen(path, "w");
+            if (game) fclose(game);
+        }
     }
     snprintf(path, sizeof path, "%s\\hookshot_version.txt", folder);
     FILE *f = fopen(path, "w");

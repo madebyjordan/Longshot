@@ -30,8 +30,17 @@ Two scripts, both in scratch folders under `build/launcher/` (no builder, game o
   within a second ([HotAvalonia](https://github.com/Kira-NT/HotAvalonia), MIT, in Debug builds only: nothing of it is in a
   Release build or a publish). The window is then made again where it was, so what its code draws (the version line,
   Update beside Play) stays right. A saved `.cs` file is applied by `dotnet watch`, or the window restarts by itself.
-  `-State` opens it in a given state, `-NoGame` with no game yet. Alt+F5 reloads it by hand. Mistakes in a saved `.axaml`
-  show in the script's terminal.
+  `-State` opens it in a given state, `-NoGame` with no game yet, `-Fail` with every build stopping half way. Alt+F5
+  reloads it by hand. Mistakes in a saved `.axaml` show in the script's terminal.
+
+  Every button in it can be pressed: it runs against made-up releases (`scripts/launcher/dummy.ps1`, made afresh at each
+  start). v2.2.0, v2.2.0-rc.1 and v2.0.14 are served by a web server on 127.0.0.1 with their setup lists and parts, v2.1.0
+  is installed, and the builders' `python.exe` is the test rig's stand-in for `make_game.py`
+  (`tests/builder_launcher/rig/fakepy.c`), which goes through a build's steps in about 10 seconds without reading anything.
+  Update installs v2.2.0's builder with the real setup (`--engine`) from that server and "builds" the folder; Build makes a
+  new game folder from an empty game file; Play starts a stand-in that says so (`scripts/launcher/dummygame.c`).
+  `HOOKSHOT_DUMMY_RELEASES` (Builders.cs) keeps each download on that server: a first builder from GitHub and AMD's FSR
+  runtime are refused.
 - **`scripts/launcher/sheet.ps1`**: every screen on one page (`build/launcher/sheet/index.html`), drawn off-screen again on
   each save, about 10 seconds for all of them: the main screen with and without an update, no game yet, building, build
   stopped, Releases, updating, update stopped, Settings. A Paper export named like a state
