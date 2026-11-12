@@ -614,7 +614,8 @@ public partial class MainWindow : Window
         if (folder.HasGame && folder.Rebuilds && folder.Version is { } v && IsRelease(v))
         {
             var fsr = FsrTick.IsChecked == true && fsrLicense;
-            var builtFsr = File.Exists(Path.Combine(folder.Path, ".hookshot_fsr"));
+            // (in the game when built with it, the mark, and AMD's runtime beside it to load)
+            var builtFsr = File.Exists(Path.Combine(folder.Path, ".hookshot_fsr")) && File.Exists(Path.Combine(folder.Path, "amd_fidelityfx_upscaler_vk.dll"));
             var ngx = Path.Combine(folder.Path, "ngx");
             var builtDlss = Directory.Exists(ngx) && Directory.EnumerateFiles(ngx).Any(f => Path.GetFileName(f) is "nvngx_dlss.dll" ||
                                                                                            Path.GetFileName(f).StartsWith("libnvidia-ngx-dlss.so"));
@@ -776,15 +777,23 @@ public partial class MainWindow : Window
 
     /// (make_game.py's options for the choices, each only when that release's make_game.py knows it: an older one stops on an
     /// argument it does not know)
-    static void Options(Builder b, List<string> args, bool dlss, bool fsr, bool prepare)
+    void Options(Builder b, List<string> args, bool dlss, bool fsr, bool prepare)
     {
+        ffxAfter = false;
         if (OperatingSystem.IsWindows() && !SameDir(Builders.Work, Builders.Base) && Builders.Knows(b, "--work")) args.AddRange(new[] { "--work", Builders.Work });
         if (dlss && Builders.Knows(b, "--fetch-ngx-sdk") && Builders.Knows(b, "--accept-nvidia-license"))
             args.AddRange(new[] { "--fetch-ngx-sdk", "--accept-nvidia-license" });
+        // (AMD FSR 4: --fsr to any make_game.py that takes it, the fetch words only to one that knows them. For one that does not,
+        // v2.1.0 and before, the launcher puts AMD's runtime in the folder once it is built: FfxRuntime, ffxAfter)
+        if (fsr && Builders.Knows(b, "--fsr")) args.Add("--fsr");
         if (fsr && Builders.Knows(b, "--fsr") && Builders.Knows(b, "--fetch-fsr-runtime") && Builders.Knows(b, "--accept-amd-license"))
-            args.AddRange(new[] { "--fsr", "--fetch-fsr-runtime", "--accept-amd-license" });
+            args.AddRange(new[] { "--fetch-fsr-runtime", "--accept-amd-license" });
+        else if (fsr && Builders.Knows(b, "--fsr")) ffxAfter = true;
         if (!prepare && Builders.Knows(b, ShaderStep.Later)) args.Add(ShaderStep.Later);
     }
+
+    /// (the build under way has FSR 4 and its tools do not fetch AMD's runtime: the launcher puts it in the folder at the end)
+    bool ffxAfter;
 
     static bool SameDir(string a, string b) =>
         string.Equals(Path.GetFullPath(a).TrimEnd('\\', '/'), Path.GetFullPath(b).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
@@ -816,6 +825,12 @@ public partial class MainWindow : Window
         try { failure = await j.Run(b => WithSelf(makeGame(b))); }
         finally { tick.Stop(); }
         job = null;
+        if (j.Work.Done != null && ffxAfter)
+        {
+            ffxAfter = false;
+            var why = await FfxRuntime.Ensure(Builders.FfxSdk) ?? FfxRuntime.CopyTo(Builders.FfxSdk, target);
+            if (why != null) j.Log.AppendLine("AMD FSR 4: " + why);
+        }
         if (j.Work.Done != null)
         {
             var built = GameFolder.Read(target);
