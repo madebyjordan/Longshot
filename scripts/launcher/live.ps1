@@ -13,15 +13,18 @@
 # game folder in about 10 seconds; Build makes a new game folder from an empty game file; Play shows a stand-in that says
 # "Play works". Nothing of this PC's own (builders, games, settings) is read or written, and nothing goes to GitHub.
 #
-# -State is HOOKSHOT_UI_PREVIEW (launcher/Hookshot/MainWindow.axaml.cs Preview): menu, tab=build|releases|settings, older,
-# pre, and a made-up job shown without running: building[=0..1], stopped, updating[=0..1], updatestopped. Comma-separated.
+# -State is HOOKSHOT_UI_PREVIEW (launcher/Hookshot/MainWindow.axaml.cs Preview): tab=build|releases|settings (a page), older,
+# pre, a made-up job shown without running: building[=0..1], stopped, updating[=0..1], updatestopped, and a made-up launcher
+# update for the note: launcherupdate[=v0.1.0]. Comma-separated.
 param([string]$State = '', [switch]$NoGame, [switch]$Fail, [int]$StepMs = 400, [int]$Port = 8793)
 $ErrorActionPreference = 'Stop'
 $Root = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 Set-Location $Root
-if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
-    $env:DOTNET_ROOT = Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet'
-    $env:PATH = "$env:DOTNET_ROOT;$env:PATH"
+# (a dotnet with an SDK: the one on PATH may be a runtime alone; the per-user SDK, %LOCALAPPDATA%\Microsoft\dotnet, then)
+$userDotnet = Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet'
+if ((-not (Get-Command dotnet -ErrorAction SilentlyContinue) -or -not (& dotnet --list-sdks 2>$null)) -and (Test-Path "$userDotnet\dotnet.exe")) {
+    $env:DOTNET_ROOT = $userDotnet
+    $env:PATH = "$userDotnet;$env:PATH"
 }
 . (Join-Path $PSScriptRoot 'dummy.ps1')
 $world = New-DummyWorld -Folder (Join-Path $Root 'build\launcher\live') -Port $Port -Fail:$Fail -StepMs $StepMs

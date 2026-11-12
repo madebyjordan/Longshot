@@ -7,14 +7,17 @@
 # (build/launcher/sheet/artifacts: it never mixes with `dotnet watch` or a publish), in scratch folders: no builder of this PC,
 # no game, no GitHub (HOOKSHOT_LATEST_TAG makes the releases up) and nothing run. A build, an update and their stopped states
 # are made up (HOOKSHOT_UI_PREVIEW building=, stopped, updating=, updatestopped). The page reloads its pictures by itself;
-# a picture of the Paper design named like a state (build/launcher/sheet/paper/<state>.png) shows beside it.
+# a picture of the Paper design named like a state (build/launcher/sheet/paper/<state>.png) shows beside it. The pictures are
+# drawn one at a time at below normal priority, so a benchmark running in another thread is not disturbed.
 param([switch]$Once)
 $ErrorActionPreference = 'Stop'
 $Root = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 Set-Location $Root
-if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
-    $env:DOTNET_ROOT = Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet'
-    $env:PATH = "$env:DOTNET_ROOT;$env:PATH"
+# (a dotnet with an SDK: the one on PATH may be a runtime alone; the per-user SDK, %LOCALAPPDATA%\Microsoft\dotnet, then)
+$userDotnet = Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet'
+if ((-not (Get-Command dotnet -ErrorAction SilentlyContinue) -or -not (& dotnet --list-sdks 2>$null)) -and (Test-Path "$userDotnet\dotnet.exe")) {
+    $env:DOTNET_ROOT = $userDotnet
+    $env:PATH = "$userDotnet;$env:PATH"
 }
 $Sheet = Join-Path $Root 'build\launcher\sheet'
 $Shots = Join-Path $Sheet 'shots'
@@ -23,15 +26,16 @@ New-Item -ItemType Directory -Force $Shots, (Join-Path $Sheet 'paper') | Out-Nul
 
 # The states: name, what it shows, HOOKSHOT_UI_PREVIEW, the game folder ('game': a built one at v2.1.0; '': none), the releases
 $States = @(
-    @('main',          'Main screen, up to date',         '',                        'game', 'v2.1.0,v2.0.14'),
-    @('main-update',   'Main screen, update out',          '',                        'game', 'v2.2.0,v2.1.0,v2.0.14'),
-    @('first',         'No game yet (opens on Build)',     '',                        '',     'v2.1.0,v2.0.14'),
-    @('building',      'Build: building',                  'building=0.45',           '',     'v2.1.0,v2.0.14'),
-    @('stopped',       'Build: stopped',                   'stopped',                 '',     'v2.1.0,v2.0.14'),
-    @('releases',      'Releases, update out',             'menu,tab=releases',       'game', 'v2.2.0,v2.1.0,v2.0.14,v2.0.13,v2.0.12,v2.0.11,v2.0.10'),
-    @('updating',      'Releases: updating',               'updating=0.6',            'game', 'v2.2.0,v2.1.0,v2.0.14'),
-    @('update-stopped','Releases: update stopped',         'updatestopped',           'game', 'v2.2.0,v2.1.0,v2.0.14'),
-    @('settings',      'Settings',                         'menu,tab=settings',       'game', 'v2.1.0,v2.0.14')
+    @('main',            'Play, up to date',                  '',                      'game', 'v2.1.0,v2.0.14'),
+    @('main-update',     'Play, a Hookshot release out',      '',                      'game', 'v2.2.0,v2.1.0,v2.0.14'),
+    @('launcher-update', "Play, the launcher's own update",   'launcherupdate',        'game', 'v2.1.0,v2.0.14'),
+    @('updating',        'Play, updating',                    'updating=0.6',          'game', 'v2.2.0,v2.1.0,v2.0.14'),
+    @('update-stopped',  'Play, update stopped',              'updatestopped',         'game', 'v2.2.0,v2.1.0,v2.0.14'),
+    @('first',           'No game yet (opens on Build)',      '',                      '',     'v2.1.0,v2.0.14'),
+    @('building',        'Build: building',                   'building=0.45',         '',     'v2.1.0,v2.0.14'),
+    @('stopped',         'Build: stopped',                    'stopped',               '',     'v2.1.0,v2.0.14'),
+    @('releases',        'Releases (the version under Play)', 'tab=releases',          'game', 'v2.2.0,v2.1.0,v2.0.14,v2.0.13,v2.0.12,v2.0.11,v2.0.10'),
+    @('settings',        'Settings',                          'tab=settings',          'game', 'v2.1.0,v2.0.14')
 )
 
 function New-Scratch {
@@ -73,7 +77,9 @@ setInterval(poll, 1000); poll();
 
 function Draw {
     $watch = [Diagnostics.Stopwatch]::StartNew()
-    $built = & dotnet build launcher/Hookshot/Hookshot.csproj -c Debug -p:NuGetAudit=false -nologo -v:q `
+    # (one project at a time, below normal priority: benchmarks may be running in other threads)
+    $proc = [Diagnostics.Process]::GetCurrentProcess(); try { $proc.PriorityClass = 'BelowNormal' } catch {}
+    $built = & dotnet build launcher/Hookshot/Hookshot.csproj -c Debug -p:NuGetAudit=false -nologo -v:q -m:1 `
         --artifacts-path (Join-Path $Sheet 'artifacts') 2>&1
     if ($LASTEXITCODE -ne 0) {
         $why = ($built | Select-String 'error' | Select-Object -First 3) -join "`n"
@@ -96,11 +102,14 @@ function Draw {
         $si.EnvironmentVariables['HOOKSHOT_LAUNCHER_HOME'] = Join-Path $Scratch "home\$($s[0])"
         $si.EnvironmentVariables['HOOKSHOT_NO_UPDATE_CHECK'] = '1'
         $si.EnvironmentVariables['HotAvalonia'] = 'disable'
-        [pscustomobject]@{ Name = $s[0]; Png = $png; P = [Diagnostics.Process]::Start($si) }
+        $p = [Diagnostics.Process]::Start($si)
+        try { $p.PriorityClass = 'BelowNormal' } catch {}
+        $null = $p.WaitForExit(60000)
+        [pscustomobject]@{ Name = $s[0]; Png = $png; P = $p }
     }
     $bad = @()
     foreach ($p in $procs) {
-        if (-not $p.P.WaitForExit(60000)) { $p.P.Kill(); $bad += $p.Name; continue }
+        if (-not $p.P.HasExited) { $p.P.Kill(); $bad += $p.Name; continue }
         if ($p.P.ExitCode -ne 0 -or -not (Test-Path $p.Png)) { $bad += $p.Name; continue }
         Move-Item -Force $p.Png (Join-Path $Shots "$($p.Name).png")
     }

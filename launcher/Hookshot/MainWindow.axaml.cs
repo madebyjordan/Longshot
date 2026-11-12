@@ -37,10 +37,11 @@ public partial class MainWindow : Window
     readonly string? updateTag;              // (the game's own offer: hookshot --update <folder> --tag <tag>, hos_update.c)
     readonly bool update;                    // (--update <folder>, with or without --tag: a 2.x Builder passes it on, docs/launcher-upgrade.md)
 
-    /// (what the window was asked to show first: the menu open on a tab, the older releases unfolded, pre-releases on, and a
-    /// made-up build or update in a state, nothing run: building[=0..1], stopped, updating[=0..1], updatestopped.
-    /// Development: HOOKSHOT_UI_PREVIEW=menu,tab=build|releases|settings,older,pre,building=0.4)
-    public sealed record Preview(bool Menu, string? Tab, bool Older, bool Pre, string? State = null, double At = 0.4)
+    /// (what the window was asked to show first: a page (tab=build|releases|settings; menu alone: Build), the older releases
+    /// unfolded, pre-releases on, a made-up build or update in a state, nothing run: building[=0..1], stopped, updating[=0..1],
+    /// updatestopped, and a made-up launcher update for the note: launcherupdate[=v0.1.0].
+    /// Development: HOOKSHOT_UI_PREVIEW=tab=settings,older,pre,building=0.4)
+    public sealed record Preview(bool Menu, string? Tab, bool Older, bool Pre, string? State = null, double At = 0.4, string? LauncherUpdate = null)
     {
         public static Preview FromEnvironment()
         {
@@ -50,8 +51,9 @@ public partial class MainWindow : Window
             var at = state?.Split('=') is [_, var f] && double.TryParse(f, System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out var v) ? Math.Clamp(v, 0, 1) : 0.4;
             var first = state?.Split('=')[0] is "building" or "stopped";
-            return new(p.Contains("menu") || tab != null || state != null, tab ?? (state == null ? null : first ? "build" : "releases"),
-                       p.Contains("older"), p.Contains("pre"), state?.Split('=')[0], at);
+            var launcher = p.FirstOrDefault(x => x.Split('=')[0] == "launcherupdate") is { } l ? (l.Contains('=') ? l.Split('=')[1] : "v0.1.0") : null;
+            tab ??= first ? "build" : p.Contains("menu") ? "build" : null;
+            return new(tab != null, tab, p.Contains("older"), p.Contains("pre"), state?.Split('=')[0], at, launcher);
         }
     }
 
@@ -153,9 +155,7 @@ public partial class MainWindow : Window
         MemoryBox.SelectedItem = BuildMemory.Saved(memory, saved.MemoryGb);
 
         // ---- what the buttons do ----
-        MenuButton.Click += (_, _) => ShowMenu(true);
-        CloseMenu.Click += (_, _) => ShowMenu(false);
-        foreach (var tab in new[] { TabBuild, TabReleases, TabSettings }) tab.IsCheckedChanged += (_, _) => ShowPage();
+        foreach (var tab in new[] { NavPlay, TabBuild, TabReleases, TabSettings }) tab.IsCheckedChanged += (_, _) => ShowPage();
         FoldRow.Click += (_, _) => { olderOpen = !olderOpen; FillChoices(); };
         PreTick.Click += (_, _) => { SaveSettings(); FillChoices(); };
         PrepareTick.Click += (_, _) => SaveSettings();
@@ -166,10 +166,10 @@ public partial class MainWindow : Window
         LowMemTick.Click += (_, _) => LowMemClick();
         ShareButton.Click += async (_, _) => await ShareClick();
         CheckButton.Click += async (_, _) => await CheckReleases(say: true);
-        UpdateButton.Click += async (_, _) => await UpdateClick();
-        UpdateGo.Click += async (_, _) => await UpdateClick();
+        UpdateButton.Click += async (_, _) => await NoteUpdateClick();
         Go.Click += (_, _) => GoClick();
-        Version.Click += (_, _) => OpenFolder();
+        Version.Click += (_, _) => TabReleases.IsChecked = true;
+        OpenFolderLink.Click += (_, _) => OpenFolder();
         SourceChange.Click += (_, _) => SourceMenu();
         OutChange.Click += async (_, _) => await PickOut();
         BuildGame.Click += async (_, _) => await StartBuild();
@@ -196,10 +196,10 @@ public partial class MainWindow : Window
         }
         Closing +=(_, e) => { if (job != null && !closeAsked) { e.Cancel = true; _ = AskClose(); } };
 
-        // (no game yet: the menu opens on Build; with one, on Releases)
-        (folder.HasGame ? TabReleases : TabBuild).IsChecked = true;
+        // (no game yet: it opens on Build; with one, on Play, where an update shows in the note)
+        launcherUpdate = preview.LauncherUpdate;
         if (preview.Tab != null) (preview.Tab == "build" ? TabBuild : preview.Tab == "settings" ? TabSettings : TabReleases).IsChecked = true;
-        ShowMenu(preview.Menu || !folder.HasGame || this.update);
+        else (folder.HasGame ? NavPlay : TabBuild).IsChecked = true;
         ShowPage();
         ShowLowMem();
         CheckSource();
@@ -288,26 +288,31 @@ public partial class MainWindow : Window
         else if (Bar.IsVisible) ShowMenu(false);
     }
 
-    // ---- the menu ----
+    // ---- the pages: Play, and Build, Releases or Settings in the panel beside the words ----
 
+    /// (open: a page in the panel, Build when Play was shown; closed: back to Play)
     void ShowMenu(bool open)
     {
-        var was = Bar.IsVisible;
-        Bar.IsVisible = open;
-        MenuButton.IsVisible = !open;
-        if (!open) ShowDetails(false);
-        if (was == open || !IsLoaded) return;
-        // (the keyboard's or the controller's place follows: into the panel on the tab shown, back to Play when it closes; a
-        // control hidden with the panel would leave it nowhere)
-        var tab = new[] { TabBuild, TabReleases, TabSettings }.FirstOrDefault(t => t.IsChecked == true) ?? TabBuild;
-        Dispatcher.UIThread.Post(() => (open ? (Control)tab : Go.IsEnabled ? Go : MenuButton).Focus());
+        if (!open) NavPlay.IsChecked = true;
+        else if (NavPlay.IsChecked == true) TabBuild.IsChecked = true;
     }
 
     void ShowPage()
     {
+        var was = Bar.IsVisible;
         BuildPage.IsVisible = TabBuild.IsChecked == true;
         ReleasesPage.IsVisible = TabReleases.IsChecked == true;
         SettingsPage.IsVisible = TabSettings.IsChecked == true;
+        var open = BuildPage.IsVisible || ReleasesPage.IsVisible || SettingsPage.IsVisible;
+        Bar.IsVisible = open;
+        BarTitle.Text = BuildPage.IsVisible ? "Build" : ReleasesPage.IsVisible ? "Releases" : "Settings";
+        // (the Play screen gives the panel its place; Credits, the note and the words stay)
+        PlayScreen.IsVisible = !open;
+        if (!open && job is not { FirstBuild: false } && stoppedJob is not { FirstBuild: false }) ShowDetails(false);
+        if (was == open || !IsLoaded) return;
+        // (the keyboard's or the controller's place follows: onto the page's word, back to Play when it closes)
+        var tab = new[] { TabBuild, TabReleases, TabSettings }.FirstOrDefault(t => t.IsChecked == true) ?? TabBuild;
+        Dispatcher.UIThread.Post(() => (open ? (Control)(tab.IsVisible ? tab : TabBuild) : Go.IsEnabled ? Go : NavPlay).Focus());
     }
 
     // ---- the versions ----
@@ -363,6 +368,22 @@ public partial class MainWindow : Window
         else if (!c.Here && c.Reach && c.Tag != null) await Bring(c.Tag, ask: true);
     }
 
+    /// (the launcher's own update, newer than this one: none is looked for yet, a preview makes one up, launcherupdate)
+    string? launcherUpdate;
+
+    /// (a release's page on GitHub: "see what's new")
+    static string ReleasePage(string tag) => "https://github.com/NotRexed/Hookshot/releases/tag/" + Uri.EscapeDataString(tag);
+
+    /// The note's button: the Hookshot release brought (a rebuild, asked first); else the launcher's own update, whose page opens
+    /// (the launcher does not update itself yet)
+    async Task NoteUpdateClick()
+    {
+        if (Available) await UpdateClick();
+        else if (launcherUpdate != null)
+            try { Process.Start(new ProcessStartInfo(ReleasePage(launcherUpdate)) { UseShellExecute = true }); }
+            catch (Exception) { }
+    }
+
     async Task UpdateClick()
     {
         if (latest != null && lists?.All.FirstOrDefault(c => SameTag(c.Tag, latest)) is { Reach: true }) await Bring(latest, ask: true);
@@ -391,10 +412,6 @@ public partial class MainWindow : Window
             : lists?.Picked is { Here: true } p ? p.Title : folder.Version is { } v ? (IsRelease(v) ? VersionName(v) : v) : "Your game";
         Version.IsHitTestVisible = folder.HasGame;
         var available = Available;
-        MenuDot.IsVisible = NewerOut();
-        UpdateGo.IsVisible = available && folder.HasGame;
-        UpdateGoTo.Text = available ? "to " + VersionName(latest!) : "";
-        ToolTip.SetTip(UpdateGo, available ? $"Update to {VersionName(latest!)}: your game is rebuilt from your game files ({BuildTimes.About(typicalBuild)}). Your saves and settings stay." : null);
 
         // ---- Build ----
         var idle = !buildWorking && !buildStopped;
@@ -420,22 +437,29 @@ public partial class MainWindow : Window
         BuildWhy.IsVisible = buildStopped;
         if (buildWorking) SetBar(BuildFill, BuildBarText, job!.Work.Fraction, $"Building... {(int)(job.Work.Fraction * 100)}%");
 
-        // ---- the foot ----
-        CheckButton.IsVisible = !footWorking && !footStopped && !available;
+        // ---- the note at the bottom left: a Hookshot release out (Update to it), the launcher's own update, one under way (its bar,
+        // step and time left, Cancel), one that stopped (why, Try again, the details) ----
         CheckButton.IsEnabled = !busy && !checking;
-        UpdateButton.IsVisible = available;
+        var launcherOut = launcherUpdate != null && !available && !footWorking && !footStopped;
+        Note.IsVisible = available || footWorking || footStopped || launcherOut;
+        NoteTitle.Text = footWorking ? job!.Work.Title[..job.Work.Title.LastIndexOf(" - ", StringComparison.Ordinal)]
+            : footStopped ? stoppedJob!.Work.StoppedTitle
+            : available ? $"Hookshot {VersionName(latest!)} is out!"
+            : launcherOut ? "Launcher update available!" : "";
+        UpdateButton.IsVisible = available || launcherOut;
         UpdateButton.IsEnabled = !busy;
+        UpdateButton.Content = available ? $"Update to {VersionName(latest!)}" : launcherOut ? $"Update to {VersionName(launcherUpdate!)}" : "Update";
+        ToolTip.SetTip(UpdateButton, available
+            ? $"Your game is rebuilt from your game files with {VersionName(latest!)}'s tools ({BuildTimes.About(typicalBuild)}). Your saves and settings stay."
+            : launcherOut ? "Opens the release's page, where the new launcher is" : null);
+        NoteLink.IsVisible = available || launcherOut;
+        NoteLink.Tag = available ? ReleasePage(latest!) : launcherOut ? ReleasePage(launcherUpdate!) : null;
         FootBar.IsVisible = footWorking;
         FootStopped.IsVisible = footStopped;
-        FootStopped.Content = !footStopped ? "Update stopped" : stoppedJob!.Work.IsRebuild ? "Rebuild stopped"
-            : stoppedJob.Work.Bar.StartsWith("Switching") ? "Switch stopped" : "Update stopped";
         FootCancel.IsVisible = footWorking;
         FootLinks.IsVisible = footStopped;
-        FootLine.Text = available ? $"{VersionName(latest!)} Latest" : "";
-        FootLine.IsVisible = available;
-        // (that installing a version is a rebuild of the game, and how long; while it runs, the step and the time left)
-        FootNote.Text = available ? $"Rebuilds your game from your game files · {BuildTimes.About(typicalBuild)}"
-            : footWorking ? job!.Work.Note(typicalBuild, (DateTime.Now - job.Started).TotalSeconds) : "";
+        // (while it runs, the step and the time left)
+        FootNote.Text = footWorking ? job!.Work.Note(typicalBuild, (DateTime.Now - job.Started).TotalSeconds) : "";
         FootNote.IsVisible = FootNote.Text.Length > 0;
         FootWhy.Text = footStopped ? stoppedWhy!.TrimEnd('.') + ". Nothing was changed in your game folder." : "";
         ToolTip.SetTip(FootWhy, FootWhy.Text);
@@ -832,8 +856,7 @@ public partial class MainWindow : Window
                   File.Exists(Path.Combine(game, "amd_fidelityfx_upscaler_vk.dll")) && File.Exists(Path.Combine(game, "LICENSE-AMD-FSR-SDK.md")));
         var noFsr = rebuild && !fsr && File.Exists(Path.Combine(game, ".hookshot_fsr"));
         var prepare = saved?.PrepareLater != true;
-        TabReleases.IsChecked = true;
-        ShowMenu(true);
+        NavPlay.IsChecked = true;   // (an update shows in the note, on the Play screen)
         await Run(new Job(tag, firstBuild: false, ahead, fetch: !Builders.Installed().ContainsKey(tag), rebuild), b =>
         {
             var args = new List<string> { "--update", game };

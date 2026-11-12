@@ -42,9 +42,10 @@ Two scripts, both in scratch folders under `build/launcher/` (no builder, game o
   `HOOKSHOT_DUMMY_RELEASES` (Builders.cs) keeps each download on that server: a first builder from GitHub and AMD's FSR
   runtime are refused.
 - **`scripts/launcher/sheet.ps1`**: every screen on one page (`build/launcher/sheet/index.html`), drawn off-screen again on
-  each save, about 10 seconds for all of them: the main screen with and without an update, no game yet, building, build
-  stopped, Releases, updating, update stopped, Settings. A Paper export named like a state
-  (`build/launcher/sheet/paper/<state>.png`) shows beside it.
+  each save, about 15 seconds for all of them, one at a time at below normal priority (a benchmark may be running): Play up
+  to date, with a Hookshot release out, with the launcher's own update, updating and update stopped; no game yet; building
+  and build stopped; Releases; Settings. A Paper export named like a state (`build/launcher/sheet/paper/<state>.png`) shows
+  beside it.
 
 The states a build, an update or a failure is in are made up for both, nothing run: `HOOKSHOT_UI_PREVIEW` takes
 `building[=0..1]`, `stopped`, `updating[=0..1]` and `updatestopped` beside `menu`, `tab=build|releases|settings`, `older`

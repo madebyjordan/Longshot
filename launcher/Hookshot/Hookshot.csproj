@@ -41,6 +41,8 @@
     <EmbeddedResource Include="..\..\builder\linux\hookshot-folder" LogicalName="hookshot-folder" />
     <AvaloniaResource Include="..\..\builder\HookshotBuilder\Images\hookshot.png" Link="Assets\hookshot.png" />
     <AvaloniaResource Include="..\..\builder\HookshotBuilder\Fonts\Marcellus-Regular.ttf" Link="Assets\Fonts\Marcellus-Regular.ttf" />
+    <!-- (Launcher v3's type: Faculty Glyphic, SIL Open Font License 1.1, its licence beside it) -->
+    <AvaloniaResource Include="Assets\Fonts\FacultyGlyphic-Regular.ttf" />
   </ItemGroup>
   <!-- Controller support (Input/Gamepad.cs) reads pads through SDL2 (zlib-licensed) from Ultz.Native.SDL, the .NET Foundation's (Silk.NET's)
        natives-only SDL2 build, no managed code. Package 2.32.10 holds SDL release-2.30.8 for Windows and release-2.32.8 for Linux. Only the
