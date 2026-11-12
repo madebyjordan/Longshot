@@ -7,9 +7,9 @@
 // RtlEnterCriticalSection, 76% of the workers' samples waiting), so 12 workers on a 6-core, 12-thread Ryzen 5 5600 kept 3.75
 // CPUs busy and were slower than 6. On the segment heap 12 workers kept 11 busy, and the part took 904 s against 1,466 s
 // with 6 on the NT heap (RX 6700 XT, a cold prepare). So with the segment heap every usable CPU gets a worker, as far as
-// the free memory allows: each worker more held about 0.4 GB more at the peak (6 more: 8.9 -> 11.3 GB private), and a worker
-// is added only for each kPerWorkerMB free past kReserveMB. Without it (Linux, a Windows before 10 2004 that ignores the
-// manifest, a build without it) the count is half_cpus, as before.
+// the free memory allows: each worker more held 0.4-0.5 GB more at the peak (6 more: 8.9 -> 11.3 GB private on one build,
+// 9.0 -> 12.1 GB on another), and a worker is added only for each kPerWorkerMB free past kReserveMB. Without it (Linux, a
+// Windows before 10 2004 that ignores the manifest, a build without it) the count is half_cpus, as before.
 #pragma once
 
 #include <algorithm>
@@ -18,7 +18,7 @@
 namespace prepare_workers {
 
 constexpr uint64_t kReserveMB = 4096;    // (physical memory left to the rest of the PC)
-constexpr uint64_t kPerWorkerMB = 512;   // (a worker past half the CPUs, each: measured ~400 MB at the peak, with room)
+constexpr uint64_t kPerWorkerMB = 768;   // (a worker past half the CPUs, each: measured 400-520 MB at the peak, with room)
 constexpr unsigned kMaxWorkers = 32;
 
 /// half: half_cpus(); usable: usable_cpus(); avail_mb: physical memory free now (MB); segment: the process heap is the segment

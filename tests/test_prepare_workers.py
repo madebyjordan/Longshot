@@ -4,7 +4,7 @@ With the NT heap the driver's compiles queue on its one lock, and more workers r
 the segment heap (nx2/win_manifest.py's heapType) every usable CPU gets a worker, as far as the free memory allows. This test
 compiles the real prepare_workers.h and checks:
 - without the segment heap the count is half_cpus, whatever the memory;
-- with it, one worker more for each kPerWorkerMB free past kReserveMB, up to the usable CPUs and to kMaxWorkers;
+- with it, one worker more for each kPerWorkerMB free past kReserveMB (768 MB past 4 GB), up to the usable CPUs and to kMaxWorkers;
 - the heap header's signature: the segment heap's 0xDDEEDDEE at byte 16, the NT heap's (or anything else) is not it.
 It also checks that prepare_run sizes its pool with prepare_cpus (in play, behind the game, it keeps its quarter), and that the
 game's manifest asks for the segment heap.
