@@ -123,21 +123,27 @@ Draw
 if ($Once) { return }
 Start-Process (Join-Path $Sheet 'index.html')
 
-# Saved files: the launcher's own, and the WPF launcher's rules it compiles in. A burst of saves draws once
-$fsw = New-Object IO.FileSystemWatcher (Join-Path $Root 'launcher\Hookshot')
-$fsw.IncludeSubdirectories = $true
-$fsw2 = New-Object IO.FileSystemWatcher (Join-Path $Root 'builder\HookshotBuilder')
-foreach ($w in $fsw, $fsw2) { $w.NotifyFilter = 'LastWrite, FileName'; $w.EnableRaisingEvents = $true }
-Write-Host "watching launcher/Hookshot: save a file to draw again (Ctrl+C to stop)"
-while ($true) {
-    $changed = $null
-    foreach ($w in $fsw, $fsw2) {
-        $r = $w.WaitForChanged('Changed, Created, Renamed', 500)
-        if (-not $r.TimedOut -and $r.Name -match '\.(axaml|cs|csproj|props|png|ttf)$' -and $r.Name -notmatch '(^|\\)(bin|obj)\\') { $changed = $r.Name }
+# Saved files: the launcher's own, and the WPF launcher's rules it compiles in. Their times are compared with when the last
+# drawing began, so a file saved while it was drawing is drawn next, not missed; a burst of saves draws once
+function Newest {
+    # (the source folders only: never a project's bin or obj, which a build fills)
+    $files = foreach ($project in (Join-Path $Root 'launcher\Hookshot'), (Join-Path $Root 'builder\HookshotBuilder')) {
+        Get-ChildItem $project -File -ErrorAction SilentlyContinue
+        Get-ChildItem $project -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -notin 'bin', 'obj' } |
+            ForEach-Object { Get-ChildItem $_.FullName -Recurse -File -ErrorAction SilentlyContinue }
     }
-    if ($changed) {
+    ($files | Where-Object { $_.Extension -in '.axaml', '.cs', '.csproj', '.props', '.png', '.ttf' } |
+        Measure-Object LastWriteTimeUtc -Maximum).Maximum
+}
+$drawnFrom = Newest
+Write-Host "watching launcher/Hookshot: save a file to draw again (close this window to stop)"
+while ($true) {
+    Start-Sleep -Milliseconds 700
+    $now = Newest
+    if ($now -gt $drawnFrom) {
         Start-Sleep -Milliseconds 400   # (the rest of a save that writes several files)
-        Write-Host "saved: $changed"
+        $drawnFrom = Newest
+        Write-Host "saved at $($drawnFrom.ToLocalTime().ToString('HH:mm:ss'))"
         Draw
     }
 }

@@ -101,8 +101,28 @@ public partial class MainWindow : Window
         var first = preview.State is "building" or "stopped";
         var tag = folder.Version is { } v && !first ? NextOf(v) : Environment.GetEnvironmentVariable("HOOKSHOT_LATEST_TAG")?.Split(',')[0].TrimEnd('?') ?? "v2.1.0";
         var j = new Job(tag, first, ahead: true, fetch: !first);
-        foreach (var line in new[] { "@@installed " + tag, "@@stage compile", "@@plan 120 640", "@@eta 1080" }) j.Work.Line(line);
-        j.Work.Line("@@progress " + ((preview.At - 0.2) / 0.7).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        // (the lines a builder would have said by then, so the step shown is the one at that point: an update's builder being
+        // downloaded first, then the translating, the compile with its files and time, the swap, the shaders)
+        var at = preview.At;
+        var f = (double x) => x.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var make = first ? at : (at - 0.12) / 0.88;   // (make_game.py's share, after an update's download)
+        var said = new List<string>();
+        if (!first && at < 0.12) said.AddRange(new[] { "@@setup Downloading part 2 of 3 (210 MB)", "@@percent " + (int)(at / 0.12 * 300 % 100) });
+        else
+        {
+            if (!first) said.Add("@@installed " + tag);
+            if (make < 0.2) said.AddRange(new[] { "@@stage lift", "@@progress " + f(Math.Max(0, make - 0.05) / 0.15) });
+            else if (make < 0.9)
+            {
+                var done = (make - 0.2) / 0.7;
+                said.AddRange(new[] { "@@stage compile", "@@plan 120 640" });
+                for (var i = 1; i <= (int)(done * 120); i++) said.Add($"@@file src_{i}.c 3 new");
+                said.AddRange(new[] { "@@progress " + f(done), "@@eta " + (int)((1 - done) * 1500) });
+            }
+            else if (make < 0.92) said.Add("@@stage finish");
+            else said.AddRange(new[] { "@@stage " + ShaderStep.Id, "@@progress " + f((make - 0.92) / 0.08) });
+        }
+        foreach (var line in said) j.Work.Line(line);
         closeAsked = true;
         if (preview.State is "building" or "updating") job = j;
         else (stoppedJob, stoppedWhy) = (j, "The build tools stopped: there is not enough space on drive C: (32 GB needed, 4 GB free).");
@@ -428,14 +448,15 @@ public partial class MainWindow : Window
         ToolTip.SetTip(SourceChange, romfs != null ? $"{romfs}\n{exefs}" : nup);
         OutText.Text = outPath.Length > 0 ? outPath : "Choose a folder";
         ToolTip.SetTip(OutChange, outPath);
-        var (line, bad) = buildWorking ? (job!.Work.Detail, false) : idle ? IdleLine() : ("", false);
+        var (line, bad) = buildWorking ? (NowLine(job!), false) : idle ? IdleLine() : ("", false);
         BuildLine.Text = line;
         BuildLine.Foreground = new SolidColorBrush(Color.Parse(bad ? "#FF8373" : "#B8B8B8"));
         BuildLine.IsVisible = line.Length > 0;
-        BuildWhy.Text = buildStopped ? stoppedWhy : "";
-        ToolTip.SetTip(BuildWhy, BuildWhy.Text);
+        // (why it stopped, in a few words; the whole of it under the pointer, in Show details and in the error log)
+        BuildWhy.Text = buildStopped ? LaunchWork.Brief(stoppedWhy!) : "";
+        ToolTip.SetTip(BuildWhy, buildStopped ? stoppedWhy : null);
         BuildWhy.IsVisible = buildStopped;
-        if (buildWorking) SetBar(BuildFill, BuildBarText, job!.Work.Fraction, $"Building... {(int)(job.Work.Fraction * 100)}%");
+        if (buildWorking) SetBar(BuildFill, BuildBarText, job!.Work.Fraction, $"Building... {job!.Work.Percent}");
 
         // ---- the note at the bottom left: a Hookshot release out (Update to it), the launcher's own update, one under way (its bar,
         // step and time left, Cancel), one that stopped (why, Try again, the details) ----
@@ -443,7 +464,7 @@ public partial class MainWindow : Window
         var launcherOut = launcherUpdate != null && !available && !footWorking && !footStopped;
         Note.IsVisible = available || footWorking || footStopped || launcherOut;
         NoteTitle.Text = footWorking ? job!.Work.Title[..job.Work.Title.LastIndexOf(" - ", StringComparison.Ordinal)]
-            : footStopped ? stoppedJob!.Work.StoppedTitle
+            : footStopped ? stoppedJob!.Work.StoppedShort
             : available ? $"Hookshot {VersionName(latest!)} is out!"
             : launcherOut ? "Launcher update available!" : "";
         UpdateButton.IsVisible = available || launcherOut;
@@ -458,15 +479,20 @@ public partial class MainWindow : Window
         FootStopped.IsVisible = footStopped;
         FootCancel.IsVisible = footWorking;
         FootLinks.IsVisible = footStopped;
-        // (while it runs, the step and the time left)
-        FootNote.Text = footWorking ? job!.Work.Note(typicalBuild, (DateTime.Now - job.Started).TotalSeconds) : "";
+        // (while it runs, what it is doing now and, once it can be told, the time left)
+        FootNote.Text = footWorking ? NowLine(job!) : "";
         FootNote.IsVisible = FootNote.Text.Length > 0;
-        FootWhy.Text = footStopped ? stoppedWhy!.TrimEnd('.') + ". Nothing was changed in your game folder." : "";
-        ToolTip.SetTip(FootWhy, FootWhy.Text);
+        // (why it stopped, in a few words; the whole of it, and that the game folder is as it was, under the pointer, in Show
+        // details and in the error log)
+        FootWhy.Text = footStopped ? LaunchWork.Brief(stoppedWhy!) : "";
+        ToolTip.SetTip(FootWhy, footStopped ? stoppedWhy!.TrimEnd('.') + ". Nothing was changed in your game folder." : null);
         FootWhy.IsVisible = footStopped;
-        if (footWorking) SetBar(FootFill, FootBarText, job!.Work.Fraction, job.Work.Bar);
+        if (footWorking) SetBar(FootFill, FootBarText, job!.Work.Fraction, job.Work.Percent);
         BuildDetails.Content = FootDetails.Content = detailsShown ? "Hide details" : "Show details";
     }
+
+    /// (under a bar: what is going on now, and the time left once it can be told: "Compiling 7 of 516 files · about 3 minutes left")
+    string NowLine(Job j) => j.Work.Left(typicalBuild, (DateTime.Now - j.Started).TotalSeconds) is { } left ? $"{j.Work.Now} · {left}" : j.Work.Now;
 
     static void SetBar(Border fill, TextBlock text, double f, string words)
     {
@@ -972,6 +998,9 @@ public partial class MainWindow : Window
         if (show)
         {
             var said = (job ?? stoppedJob)?.Log.ToString() ?? "";
+            // (a stop: why, whole, first; the note and the Build page say it in a few words)
+            if (job == null && stoppedJob != null && stoppedWhy != null)
+                said = $"Why it stopped: {stoppedWhy.TrimEnd('.')}. Nothing was changed in your game folder.{Environment.NewLine}{Environment.NewLine}{said}";
             Log.Text = said.Length > 200_000 ? said[^200_000..] : said;
             Log.CaretIndex = Log.Text.Length;
         }

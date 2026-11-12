@@ -82,6 +82,70 @@ sealed class LaunchWork
         return Rebuild + "\n" + step;
     }
 
+    // ---- the short words (the Avalonia launcher's note and Build page): only what is going on now, the rest in the details ----
+
+    /// (in the bar: "64%")
+    public string Percent => $"{(int)(Fraction * 100)}%";
+
+    /// What is going on right now, in a few words, and nothing that has not started: "Downloading its builder · part 2 of 7",
+    /// "Translating the game", "Compiling 7 of 516 files", "Preparing the shaders · 25%"
+    public string Now
+    {
+        get
+        {
+            if (stage == null) return !fetch ? "Starting" : parts > 1 ? $"Downloading its builder · part {part} of {parts}" : "Downloading its builder";
+            return stage switch
+            {
+                "read" => "Reading your game files",
+                "lift" => "Translating the game",
+                "compile" => changed > 0 ? (compiled > 0 ? $"Compiling {compiled} of {changed} files" : $"Compiling {changed} changed files")
+                    : changed == 0 ? "Nothing to compile" : "Compiling",
+                "finish" => "Swapping in the new game",
+                _ when stage == ShaderStep.Id => $"Preparing the shaders · {(int)(shaderDone * 100)}%",
+                _ => "Working",   // (a stage this launcher has no words for)
+            };
+        }
+    }
+
+    /// The time left, only once it can be told: the compile's own estimate, the shaders' pace, else a build's usual time on this
+    /// PC (typical, seconds) less the time gone, once the build itself has begun. Null until then
+    public string? Left(double? typical, double elapsed)
+    {
+        if (stage == "compile" && eta >= 0) return TimeLeft(eta);
+        if (stage == ShaderStep.Id)
+        {
+            var seconds = (DateTime.Now - shaderStarted).TotalSeconds;
+            return shaderDone >= 0.02 && shaderDone < 1 && seconds >= 20 ? TimeLeft(seconds / shaderDone * (1 - shaderDone)) : null;
+        }
+        return stage != null && typical is double t && t - elapsed >= 90 ? TimeLeft(t - elapsed) : null;
+    }
+
+    /// (a stop, in a few words: "Update to v2.2.0 stopped")
+    public string StoppedShort => IsRebuild ? $"Rebuild of {name} stopped"
+        : $"{(verb.StartsWith("Updating") ? "Update" : "Switch")} to {name} stopped";
+
+    /// Why something stopped, cut to what matters: the first sentence, without the program that said it ("The build tools
+    /// stopped: ...") or what is in brackets, and at most about 70 characters. The whole goes in the details and the error log.
+    /// "The build tools stopped: there is not enough space on drive C: (32 GB needed, 4 GB free)." -> "There is not enough space
+    /// on drive C"
+    public static string Brief(string why)
+    {
+        var s = why.Trim();
+        // (the program that said it: a short lead before a colon, "The build tools stopped: ", "The builder could not be downloaded: ")
+        var colon = s.IndexOf(": ", StringComparison.Ordinal);
+        if (colon > 0 && colon <= 40 && colon < s.Length - 10) s = s[(colon + 2)..];
+        s = Regex.Replace(s, @"\s*\([^)]*\)", "");
+        var end = Regex.Match(s, @"[.!?](\s|$)");
+        if (end.Success) s = s[..end.Index];
+        s = s.Trim().TrimEnd(':', ';', ',', ' ');
+        if (s.Length > 72)
+        {
+            var cut = s.LastIndexOf(' ', 70);
+            s = s[..(cut > 40 ? cut : 70)].TrimEnd(',', ';', ':') + "…";
+        }
+        return s.Length > 0 ? char.ToUpperInvariant(s[0]) + s[1..] : why.Trim();
+    }
+
     /// The game folder, once make_game.py said it is done (the build succeeded whatever comes after)
     public string? Done { get; private set; }
     /// Why it stopped, as the program that stopped said it
