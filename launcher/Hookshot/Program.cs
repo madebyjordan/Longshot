@@ -26,7 +26,9 @@ static class Program
         // (what a 2.x Builder handed over, taken in before anything is shown: Handover.cs)
         Handover.AtStart();
         if (start.Play && PlayNow(start.Folder)) return 0;
-        AppBuilder.Configure<App>().UsePlatformDetect().WithInterFont().LogToTrace()
+        // (X11's window class stays Hookshot, not the executable's name: the desktop's top bar and dock name it so, and the
+        // AppImage's hookshot.desktop matches it, StartupWMClass=Hookshot)
+        AppBuilder.Configure<App>().UsePlatformDetect().With(new X11PlatformOptions { WmClass = "Hookshot" }).WithInterFont().LogToTrace()
                   .StartWithClassicDesktopLifetime(args);
         return 0;
     }
