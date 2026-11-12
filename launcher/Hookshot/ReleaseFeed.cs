@@ -25,6 +25,7 @@ static class ReleaseFeed
         }
         var found = new List<ReleaseInfo>();
         string? latest = null;
+        bool nightlyHere = false, nightlyList = false;
         try
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
@@ -37,11 +38,18 @@ static class ReleaseFeed
             foreach (var r in doc.RootElement.EnumerateArray())
             {
                 if (r.GetProperty("draft").GetBoolean() || r.GetProperty("tag_name").GetString() is not { Length: > 0 } tag) continue;
-                if (!LaunchList.IsRelease(tag)) continue;   // (only versions: "nightly" and the like are not listed)
-                var pre = r.GetProperty("prerelease").GetBoolean();
                 var names = new HashSet<string?>();
                 if (r.TryGetProperty("assets", out var assets))
                     foreach (var asset in assets.EnumerateArray()) names.Add(asset.GetProperty("name").GetString());
+                // (the rolling nightly: listed under the version it is now, read from its own setup list below)
+                if (tag == "nightly")
+                {
+                    nightlyList = names.Contains(Setup) && names.Contains(SetupList);
+                    nightlyHere = OperatingSystem.IsWindows() ? nightlyList : names.Contains(LinuxList);
+                    continue;
+                }
+                if (!LaunchList.IsRelease(tag)) continue;   // (only versions: other names are not listed)
+                var pre = r.GetProperty("prerelease").GetBoolean();
                 // (what this launcher installs a release's builder from: on Windows the setup and its list, Builders.Install's engine
                 // mode; on Linux the list linux_update.py reads, and the AppImage for a first builder. A release with only the zip
                 // was the WPF builder's own update)
@@ -51,9 +59,26 @@ static class ReleaseFeed
                 found.Add(new ReleaseInfo(tag, pre, here, list));
                 if (latest == null && !pre) latest = tag;
             }
+            // (the nightly's version, git describe's v2.2.0-4-g1a2b3c4: the "tag" line of its setup list, which the setup checks when
+            // it installs it by that name, from the rolling nightly release, builder/setup/setup.c nightly_tag)
+            if (nightlyHere && await NightlyTag(http) is { } nightly && found.All(f => !LaunchList.SameTag(f.Tag, nightly)))
+                found.Add(new ReleaseInfo(nightly, true, true, nightlyList));
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException
                                        or KeyNotFoundException) { }
         return (found, latest);
+    }
+
+    /// (the version the nightly is now: its setup list's "tag" line; null when it cannot be read or is not a version)
+    static async Task<string?> NightlyTag(HttpClient http)
+    {
+        try
+        {
+            var list = await http.GetStringAsync("https://github.com/NotRexed/Hookshot/releases/download/nightly/" +
+                                                 (OperatingSystem.IsWindows() ? SetupList : LinuxList));
+            var tag = list.Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.StartsWith("tag "))?[4..].Trim();
+            return tag != null && LaunchList.IsRelease(tag) ? tag : null;
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or InvalidOperationException) { return null; }
     }
 }

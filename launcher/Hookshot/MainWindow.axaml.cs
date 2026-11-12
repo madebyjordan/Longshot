@@ -7,6 +7,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using HookshotBuilder;
 using static HookshotBuilder.LaunchList;
 
@@ -175,7 +176,7 @@ public partial class MainWindow : Window
         MemoryBox.SelectedItem = BuildMemory.Saved(memory, saved.MemoryGb);
 
         // ---- what the buttons do ----
-        foreach (var tab in new[] { NavPlay, TabBuild, TabReleases, TabSettings }) tab.IsCheckedChanged += (_, _) => ShowPage();
+        foreach (var tab in new[] { NavPlay, TabBuild, TabSettings }) tab.IsCheckedChanged += (_, _) => ShowPage();
         FoldRow.Click += (_, _) => { olderOpen = !olderOpen; FillChoices(); };
         PreTick.Click += (_, _) => { SaveSettings(); FillChoices(); };
         PrepareTick.Click += (_, _) => SaveSettings();
@@ -188,8 +189,9 @@ public partial class MainWindow : Window
         CheckButton.Click += async (_, _) => await CheckReleases(say: true);
         UpdateButton.Click += async (_, _) => await NoteUpdateClick();
         Go.Click += (_, _) => GoClick();
-        Version.Click += (_, _) => TabReleases.IsChecked = true;
-        OpenFolderLink.Click += (_, _) => OpenFolder();
+        Version.Click += (_, _) => ShowReleases(!ReleasesLayer.IsVisible);
+        ReleasesShade.PointerPressed += (_, _) => ShowReleases(false);
+        OpenFolderLink.Click += (_, _) => { ShowReleases(false); OpenFolder(); };
         SourceChange.Click += (_, _) => SourceMenu();
         OutChange.Click += async (_, _) => await PickOut();
         BuildGame.Click += async (_, _) => await StartBuild();
@@ -218,8 +220,9 @@ public partial class MainWindow : Window
 
         // (no game yet: it opens on Build; with one, on Play, where an update shows in the note)
         launcherUpdate = preview.LauncherUpdate;
-        if (preview.Tab != null) (preview.Tab == "build" ? TabBuild : preview.Tab == "settings" ? TabSettings : TabReleases).IsChecked = true;
+        if (preview.Tab is "build" or "settings") (preview.Tab == "build" ? TabBuild : TabSettings).IsChecked = true;
         else (folder.HasGame ? NavPlay : TabBuild).IsChecked = true;
+        ShowReleases(preview.Tab == "releases");
         ShowPage();
         ShowLowMem();
         CheckSource();
@@ -295,17 +298,18 @@ public partial class MainWindow : Window
 
     void KeyPressed(object? sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape && Bar.IsVisible)
+        if (e.Key == Key.Escape && (Bar.IsVisible || ReleasesLayer.IsVisible || detailsShown))
         {
             Back();
             e.Handled = true;
         }
     }
 
-    /// (Escape, or a controller's B: the details put away, else the menu closed)
+    /// (Escape, or a controller's B: the releases dropdown closed, else the details put away, else the panel closed)
     void Back()
     {
-        if (detailsShown) ShowDetails(false);
+        if (ReleasesLayer.IsVisible) ShowReleases(false);
+        else if (detailsShown) ShowDetails(false);
         else if (Bar.IsVisible) ShowMenu(false);
     }
 
@@ -322,18 +326,34 @@ public partial class MainWindow : Window
     {
         var was = Bar.IsVisible;
         BuildPage.IsVisible = TabBuild.IsChecked == true;
-        ReleasesPage.IsVisible = TabReleases.IsChecked == true;
         SettingsPage.IsVisible = TabSettings.IsChecked == true;
-        var open = BuildPage.IsVisible || ReleasesPage.IsVisible || SettingsPage.IsVisible;
+        var open = BuildPage.IsVisible || SettingsPage.IsVisible;
         Bar.IsVisible = open;
-        BarTitle.Text = BuildPage.IsVisible ? "Build" : ReleasesPage.IsVisible ? "Releases" : "Settings";
+        BarTitle.Text = BuildPage.IsVisible ? "Build" : "Settings";
+        if (open) ShowReleases(false);
         // (the Play screen gives the panel its place; Credits, the note and the words stay)
         PlayScreen.IsVisible = !open;
         if (!open && job is not { FirstBuild: false } && stoppedJob is not { FirstBuild: false }) ShowDetails(false);
         if (was == open || !IsLoaded) return;
         // (the keyboard's or the controller's place follows: onto the page's word, back to Play when it closes)
-        var tab = new[] { TabBuild, TabReleases, TabSettings }.FirstOrDefault(t => t.IsChecked == true) ?? TabBuild;
-        Dispatcher.UIThread.Post(() => (open ? (Control)(tab.IsVisible ? tab : TabBuild) : Go.IsEnabled ? Go : NavPlay).Focus());
+        var tab = new[] { TabBuild, TabSettings }.FirstOrDefault(t => t.IsChecked == true) ?? TabBuild;
+        Dispatcher.UIThread.Post(() => (open ? (Control)tab : Go.IsEnabled ? Go : NavPlay).Focus());
+    }
+
+    /// The releases dropdown, opening upwards from the version under Play (closed by a click elsewhere, a version picked, the
+    /// version pressed again, Escape)
+    void ShowReleases(bool open)
+    {
+        if (open && !PlayScreen.IsVisible) return;
+        var was = ReleasesLayer.IsVisible;
+        ReleasesLayer.IsVisible = open;
+        if (was == open || !IsLoaded) return;
+        // (the keyboard's or the controller's place: onto the list's first version, back to the version when it closes)
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!open) Version.Focus();
+            else if (ReleasesDrop.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.IsEffectivelyVisible && b.IsEnabled) is { } first) first.Focus();
+        });
     }
 
     // ---- the versions ----
@@ -369,9 +389,15 @@ public partial class MainWindow : Window
         lists = Make(releases, latest, folder.Version, installed, folder.Rebuilds, null, olderOpen);
         if (job is { FirstBuild: false } j)
             foreach (var c in lists.All) c.Busy = SameTag(c.Tag, j.Tag);
-        // (one list, newest first: the pre-releases among the releases while Settings has them on, and always the one in the folder)
+        // (three lists, newest first: the releases; and, while Settings has pre-releases on, the release candidates and the
+        // nightly. The one in the folder, picked or being brought shows whatever the setting)
         var pre = PreTick.IsChecked == true;
-        ReleaseList.ItemsSource = lists.Pre.Where(c => pre || c.Here || c.Picked || c.Busy).Concat(lists.Releases).OrderByDescending(c => c.Tag!, Order).ToList();
+        ReleaseList.ItemsSource = lists.Releases.OrderByDescending(c => c.Tag!, Order).ToList();
+        var pres = lists.Pre.Where(c => pre || c.Here || c.Picked || c.Busy).OrderByDescending(c => c.Tag!, Order).ToList();
+        PreList.ItemsSource = pres.Where(c => !IsNightly(c.Tag)).ToList();
+        NightlyList.ItemsSource = pres.Where(c => IsNightly(c.Tag)).ToList();
+        PreHead.IsVisible = pres.Any(c => !IsNightly(c.Tag));
+        NightlyHead.IsVisible = pres.Any(c => IsNightly(c.Tag));
         FoldRow.IsVisible = lists.Older > 0;
         FoldText.Text = lists.Folded ? $"{lists.Older} older releases" : "Fewer releases";
         FoldMark.RenderTransform = new ScaleTransform(1, lists.Folded ? 1 : -1);   // (down while they are folded, up to fold them again)
@@ -380,10 +406,14 @@ public partial class MainWindow : Window
         Render();
     }
 
+    /// (a nightly's version: git describe's v2.2.0-4-g1a2b3c4, the setup's nightly_tag and Updater.TrackOf's rule)
+    static bool IsNightly(string? tag) => tag != null && System.Text.RegularExpressions.Regex.IsMatch(tag, @"-\d+-g[0-9a-f]+(-dirty)?$");
+
     /// A release's row pressed: one not here is brought into the folder (asked first)
     async void RowClick(object? sender, RoutedEventArgs e)
     {
         if (e.Source is not Button { Tag: LaunchChoice c } || job != null) return;
+        ShowReleases(false);
         // (the one in the folder: built again with the settings now, asked first; a folder without its game files cannot be)
         if (c.Here && c.Rebuilds && folder.HasGame && c.Tag != null) await Bring(c.Tag, ask: true, rebuild: true);
         else if (!c.Here && c.Reach && c.Tag != null) await Bring(c.Tag, ask: true);

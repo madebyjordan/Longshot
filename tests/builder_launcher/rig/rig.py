@@ -64,7 +64,7 @@ def release(tag, python_part=True):
     open(os.path.join(www, f"list-{tag}.txt"), "w", newline="\n").write("\n".join(lines) + "\n")
 
 
-for tag in ("v2.2.0-rc.1", "v2.2.0", "v2.0.14"):
+for tag in ("v2.2.0-rc.1", "v2.2.0", "v2.2.0-3-g1a2b3c4", "v2.0.14"):   # (v2.2.0-3-g1a2b3c4: a nightly)
     release(tag)
 
 # the scratch install: v2.1.0, the version in use

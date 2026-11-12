@@ -15,6 +15,22 @@
     <StreamGeometry x:Key="CardShape">M163.813 67.791L142.538 66.52L110.135 66.52L97.695 66.52L83.74 64.81L39.33 64.81L26.76 63.624L19.703 64.81L0 64.81L0 0.81L38.159 0L60.403 0L74.132 0.81L146.3 0.81L161.912 1.4L171.616 0.81L183.89 0.81L193.957 0.81L206 0.81L206 64.81L178.628 67.791L163.813 67.791Z</StreamGeometry>
     <!-- (the note: its colour, and the edges of Play's card above and below its body, their own 0 at the body's edge) -->
     <SolidColorBrush x:Key="NoteFill" Color="#B89A65"/>
+    <!-- a version in the releases dropdown: its name, and a tick (the one in the folder), an arrow (one a press brings) or the
+         turning mark (the one being brought) -->
+    <DataTemplate x:Key="ReleaseRow" x:DataType="hb:LaunchChoice">
+      <Button Classes="row" Classes.ticked="{Binding Ticked}" Classes.dim="{Binding Dim}" ToolTip.Tip="{Binding Tip}" Margin="0"
+              Tag="{Binding}">
+        <Grid Height="34" Margin="16,0" ColumnDefinitions="*,24">
+          <TextBlock Classes="line" Text="{Binding Label}" Margin="0,0,8,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                     Foreground="{Binding $parent[Button].Foreground}"/>
+          <Panel Grid.Column="1" Width="24" Height="24" VerticalAlignment="Center">
+            <Path Classes="mark" Data="{StaticResource TickMark}" IsVisible="{Binding Ticked}" Stroke="{Binding $parent[Button].Foreground}"/>
+            <Path Classes="mark" Data="{StaticResource DownloadMark}" IsVisible="{Binding Arrow}" Stroke="{Binding $parent[Button].Foreground}"/>
+            <Path Classes="mark" Data="{StaticResource RefreshMark}" IsVisible="{Binding Busy}" Stroke="#BBBBBB"/>
+          </Panel>
+        </Grid>
+      </Button>
+    </DataTemplate>
     <StreamGeometry x:Key="NoteTopEdge">M0 0.81L38.159 0L60.403 0L74.132 0.81L146.3 0.81L161.912 1.4L171.616 0.81L206 0.81L206 3L0 3Z</StreamGeometry>
     <StreamGeometry x:Key="NoteBottomEdge">M0 0L206 0L206 1.186L178.628 4.167L163.813 4.167L142.538 2.896L97.695 2.896L83.74 1.186L39.33 1.186L26.76 0L19.703 1.186L0 1.186Z</StreamGeometry>
   </Window.Resources>
@@ -86,6 +102,11 @@
     <Style Selector="Button.pill:pointerover /template/ Border#Box"><Setter Property="Background" Value="#FAC46C"/></Style>
     <Style Selector="Button.pill:pressed /template/ Border#Box"><Setter Property="Background" Value="#E9A43C"/></Style>
     <Style Selector="Button.pill:disabled"><Setter Property="Opacity" Value="0.5"/></Style>
+    <!-- a section's name in the releases dropdown -->
+    <Style Selector="TextBlock.drophead">
+      <Setter Property="FontSize" Value="12"/><Setter Property="LineHeight" Value="16"/><Setter Property="Foreground" Value="#A6FFFFFF"/>
+      <Setter Property="Margin" Value="16,8,16,4"/>
+    </Style>
     <!-- the note's close button: a small cross in the note's ink, a soft circle under the pointer -->
     <Style Selector="Button.noteclose">
       <Setter Property="Cursor" Value="Hand"/>
@@ -219,12 +240,11 @@
       </Button>
     </StackPanel>
 
-    <!-- ==== Play, Build, Settings: the words at the left. (Releases has no word: the version under Play opens it) ==== -->
+    <!-- ==== Play, Build, Settings: the words at the left. (The releases have no word: the version under Play opens them) ==== -->
     <StackPanel Name="Nav" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="20,72,0,0" Spacing="12" ZIndex="2">
       <RadioButton Name="NavPlay" Classes="nav" Content="Play" GroupName="Nav" IsChecked="True"/>
       <RadioButton Name="TabBuild" Classes="nav" Content="Build" GroupName="Nav"/>
       <RadioButton Name="TabSettings" Classes="nav" Content="Settings" GroupName="Nav"/>
-      <RadioButton Name="TabReleases" GroupName="Nav" IsVisible="False"/>
     </StackPanel>
 
     <!-- ==== the note at the bottom left: an update out (a Hookshot release, or the launcher's own), one under way, one that stopped ==== -->
@@ -263,6 +283,40 @@
       </Button>
       <Path Grid.Row="2" Stretch="Fill" Height="4.2" Width="{Binding #NoteBody.Bounds.Width}" Fill="{StaticResource NoteFill}" Data="{StaticResource NoteBottomEdge}"/>
     </Grid>
+
+    <!-- ==== the releases: a list that opens upwards from the version under Play, and closes with a click anywhere else, a version
+         picked, the version pressed again, or Escape. Releases; with Settings' Enable pre-releases on, the release candidates and
+         the nightly too ==== -->
+    <Panel Name="ReleasesLayer" IsVisible="False" ZIndex="5">
+      <!-- (anywhere outside the list: closes it) -->
+      <Border Name="ReleasesShade" Background="Transparent"/>
+      <Border Name="ReleasesDrop" Width="300" MaxHeight="430" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,66"
+              Background="#F5163C2A" CornerRadius="8" Padding="0,8" BoxShadow="0 6 24 0 #59000000">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+          <StackPanel>
+            <TextBlock Classes="drophead" Text="Releases"/>
+            <ItemsControl Name="ReleaseList" ItemTemplate="{StaticResource ReleaseRow}"/>
+            <!-- (the releases after the five newest, in one row until it is pressed) -->
+            <Button Name="FoldRow" Classes="row fold" IsVisible="False">
+              <Grid Height="34" Margin="16,0" ColumnDefinitions="*,24">
+                <TextBlock Name="FoldText" Classes="line" VerticalAlignment="Center" Foreground="{Binding $parent[Button].Foreground}"/>
+                <Panel Grid.Column="1" Width="24" Height="24" VerticalAlignment="Center">
+                  <Path Name="FoldMark" Classes="mark" Data="{StaticResource DownMark}" Stroke="{Binding $parent[Button].Foreground}"/>
+                </Panel>
+              </Grid>
+            </Button>
+            <TextBlock Name="PreHead" Classes="drophead" Text="Pre-releases" IsVisible="False"/>
+            <ItemsControl Name="PreList" ItemTemplate="{StaticResource ReleaseRow}"/>
+            <TextBlock Name="NightlyHead" Classes="drophead" Text="Nightly" IsVisible="False"/>
+            <ItemsControl Name="NightlyList" ItemTemplate="{StaticResource ReleaseRow}"/>
+            <TextBlock Name="ReleasesNote" Classes="small" Foreground="#B0B0B0" Margin="16,8,16,0" TextWrapping="Wrap" IsVisible="False"/>
+            <Border Margin="0,8,0,0" BorderBrush="#26FFFFFF" BorderThickness="0,1,0,0" Padding="16,10,16,2">
+              <Button Name="OpenFolderLink" Classes="link" Content="Open the game folder"/>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+    </Panel>
 
     <!-- what the hidden programs said: Show details -->
     <TextBox Name="Log" IsVisible="False" Margin="636,72,16,24" IsReadOnly="True" BorderThickness="1" BorderBrush="#303030"
@@ -344,40 +398,6 @@
             </StackPanel>
           </Grid>
 
-          <!-- ==== Releases: the versions, newest first ==== -->
-          <ScrollViewer Name="ReleasesPage" Grid.Row="1" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
-            <StackPanel>
-              <ItemsControl Name="ReleaseList">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="hb:LaunchChoice">
-                    <Button Classes="row" Classes.ticked="{Binding Ticked}" Classes.dim="{Binding Dim}" ToolTip.Tip="{Binding Tip}" Margin="0,0,0,4"
-                            Tag="{Binding}">
-                      <Grid Height="40" Margin="16,0" ColumnDefinitions="*,24">
-                        <TextBlock Classes="line" Text="{Binding Label}" Margin="0,0,8,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                   Foreground="{Binding $parent[Button].Foreground}"/>
-                        <Panel Grid.Column="1" Width="24" Height="24" VerticalAlignment="Center">
-                          <Path Classes="mark" Data="{StaticResource TickMark}" IsVisible="{Binding Ticked}" Stroke="{Binding $parent[Button].Foreground}"/>
-                          <Path Classes="mark" Data="{StaticResource DownloadMark}" IsVisible="{Binding Arrow}" Stroke="{Binding $parent[Button].Foreground}"/>
-                          <Path Classes="mark" Data="{StaticResource RefreshMark}" IsVisible="{Binding Busy}" Stroke="#BBBBBB"/>
-                        </Panel>
-                      </Grid>
-                    </Button>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-              <!-- (the releases after the five newest, in one row until it is pressed) -->
-              <Button Name="FoldRow" Classes="row fold" IsVisible="False">
-                <Grid Height="40" Margin="16,0" ColumnDefinitions="*,24">
-                  <TextBlock Name="FoldText" Classes="line" VerticalAlignment="Center" Foreground="{Binding $parent[Button].Foreground}"/>
-                  <Panel Grid.Column="1" Width="24" Height="24" VerticalAlignment="Center">
-                    <Path Name="FoldMark" Classes="mark" Data="{StaticResource DownMark}" Stroke="{Binding $parent[Button].Foreground}"/>
-                  </Panel>
-                </Grid>
-              </Button>
-              <TextBlock Name="ReleasesNote" Classes="small" Foreground="#B0B0B0" Margin="16,8,16,0" TextWrapping="Wrap" IsVisible="False"/>
-              <Button Name="OpenFolderLink" Classes="link" Content="Open the game folder" Margin="16,12,16,0"/>
-            </StackPanel>
-          </ScrollViewer>
 
           <!-- ==== Settings: what is on or off ==== -->
           <!-- (scrolled, when a note under a switch makes it taller than the panel) -->

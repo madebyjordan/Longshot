@@ -34,7 +34,8 @@ $States = @(
     @('first',           'No game yet (opens on Build)',      '',                      '',     'v2.1.0,v2.0.14'),
     @('building',        'Build: building',                   'building=0.45',         '',     'v2.1.0,v2.0.14'),
     @('stopped',         'Build: stopped',                    'stopped',               '',     'v2.1.0,v2.0.14'),
-    @('releases',        'Releases (the version under Play)', 'tab=releases',          'game', 'v2.2.0,v2.1.0,v2.0.14,v2.0.13,v2.0.12,v2.0.11,v2.0.10'),
+    @('releases',        'Releases (the version under Play)', 'tab=releases',          'game', 'v2.2.0,v2.2.0-rc.2,v2.2.0-3-g1a2b3c4,v2.1.0,v2.0.14,v2.0.13,v2.0.12,v2.0.11,v2.0.10'),
+    @('releases-pre',    'Releases, pre-releases on',         'tab=releases,pre',      'game', 'v2.2.0,v2.2.0-rc.2,v2.2.0-3-g1a2b3c4,v2.1.0,v2.0.14,v2.0.13,v2.0.12,v2.0.11,v2.0.10'),
     @('settings',        'Settings',                          'tab=settings',          'game', 'v2.1.0,v2.0.14')
 )
 

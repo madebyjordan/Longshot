@@ -4,7 +4,7 @@
 #   . scripts/launcher/dummy.ps1; $world = New-DummyWorld -Folder build\launcher\live -Port 8793
 #
 # The world (all under -Folder, made afresh each time; tests/builder_launcher/rig/rig.py lays it out):
-#   - releases v2.2.0, v2.2.0-rc.1 and v2.0.14, served by a web server on 127.0.0.1 (python -m http.server), each with its setup
+#   - releases v2.2.0, v2.2.0-rc.1, a nightly (v2.2.0-3-g1a2b3c4) and v2.0.14, served by a web server on 127.0.0.1 (python -m http.server), each with its setup
 #     list and parts, as GitHub would hand them out; v2.1.0 is the builder already installed and in use;
 #   - a game folder holding v2.1.0, whose game is a stand-in that says "Play works" (scripts/launcher/dummygame.c);
 #   - a game file (game.nup, empty) already chosen, for Build;
@@ -77,7 +77,7 @@ function New-DummyWorld([string]$Folder, [int]$Port = 8793, [switch]$Fail, [int]
             HOOKSHOT_DUMMY_RELEASES = "http://127.0.0.1:$Port/"
             # (any setup started without the launcher's own list still asks the local server, never GitHub)
             HOOKSHOT_SETUP_LIST = "http://127.0.0.1:$Port/list-v2.2.0.txt"
-            HOOKSHOT_LATEST_TAG = 'v2.2.0,v2.2.0-rc.1,v2.1.0,v2.0.14'
+            HOOKSHOT_LATEST_TAG = 'v2.2.0,v2.2.0-rc.1,v2.2.0-3-g1a2b3c4,v2.1.0,v2.0.14'
             HOOKSHOT_NO_UPDATE_CHECK = '1'
             HOOKSHOT_KEEP_BUILD_FILES = '1'
             FAKE_STEP_MS = "$StepMs"
