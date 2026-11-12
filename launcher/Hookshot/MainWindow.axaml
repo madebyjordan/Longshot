@@ -65,6 +65,26 @@
     </Style>
     <Style Selector="Button.word:pointerover /template/ Border#Box"><Setter Property="Background" Value="#26FFFFFF"/></Style>
     <Style Selector="Button.word.soft"><Setter Property="Background" Value="#1AFFFFFF"/></Style>
+    <!-- the version under Play, which opens the releases: a soft pill with a chevron after it, pointing up (the list opens upwards),
+         down while the list is open -->
+    <Style Selector="Button.picker">
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="Box" Background="#1AFFFFFF" CornerRadius="18" Padding="14,8,12,8">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" FontSize="14" LineHeight="20"/>
+              <Path Name="Chevron" Data="M0,5 L5,0 L10,5" Width="10" Height="5" Stroke="{TemplateBinding Foreground}" StrokeThickness="1.6"
+                    StrokeLineCap="Round" StrokeJoin="Round" VerticalAlignment="Center" RenderTransformOrigin="50%,50%"/>
+            </StackPanel>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="Button.picker:pointerover /template/ Border#Box"><Setter Property="Background" Value="#33FFFFFF"/></Style>
+    <Style Selector="Button.picker.open /template/ Border#Box"><Setter Property="Background" Value="#33FFFFFF"/></Style>
+    <Style Selector="Button.picker.open /template/ Path#Chevron"><Setter Property="RenderTransform" Value="rotate(180deg)"/></Style>
     <Style Selector="Button.mark">
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template">
@@ -214,8 +234,8 @@
               IsDefault="True">
         <TextBlock Name="GoText" Text="Play" FontFamily="{StaticResource Glyphic}" FontSize="34" LetterSpacing="-1" Foreground="#000000"/>
       </Button>
-      <Button Name="Version" Classes="word" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,24"
-              ToolTip.Tip="The releases: bring another version into your game folder"/>
+      <Button Name="Version" Classes="picker" Classes.open="{Binding #ReleasesLayer.IsVisible}" VerticalAlignment="Bottom"
+              HorizontalAlignment="Center" Margin="0,0,0,24" ToolTip.Tip="Versions: bring another one into your game folder"/>
     </Panel>
 
     <!-- Credits, GitHub and Discord, at the bottom right -->
