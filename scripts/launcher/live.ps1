@@ -6,7 +6,8 @@
 #   powershell -File scripts/launcher/live.ps1 -Fail                 # every build stops half way (the stopped states)
 #
 # A .axaml file saved shows in the window at once (HotAvalonia, Debug builds only; Alt+F5 reloads the whole window). A .cs
-# file saved is applied by `dotnet watch` where .NET can, else the window restarts by itself.
+# file saved builds and starts the window again by itself, in a few seconds (`dotnet watch --no-hot-reload`: .NET's own hot
+# reload patches code in memory, and an edit it cannot patch, a new control's handler say, left the window on the old code).
 #
 # Every button can be pressed: the window runs against made-up releases on this PC (scripts/launcher/dummy.ps1), made afresh
 # at each start under build/launcher/live. Update installs v2.2.0's stand-in builder from a local server and "builds" the
@@ -35,7 +36,7 @@ try {
     $env:DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER = '1'
     $launch = if ($NoGame) { $world.NewGame } else { $world.Game }
     "made-up releases: v2.2.0 (latest), v2.2.0-rc.1, v2.1.0 (installed), v2.0.14. Game folder: $launch"
-    & dotnet watch --project launcher/Hookshot/Hookshot.csproj --non-interactive run -p:NuGetAudit=false -- --launch $launch
+    & dotnet watch --project launcher/Hookshot/Hookshot.csproj --non-interactive --no-hot-reload run -p:NuGetAudit=false -- --launch $launch
 } finally {
     Stop-Process -Id $world.Server.Id -Force -ErrorAction SilentlyContinue
 }

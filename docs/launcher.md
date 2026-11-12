@@ -29,7 +29,8 @@ Two scripts, both in scratch folders under `build/launcher/` (no builder, game o
 - **`scripts/launcher/live.ps1`**: the launcher in a real window that follows your edits. A saved `.axaml` file shows in it
   within a second ([HotAvalonia](https://github.com/Kira-NT/HotAvalonia), MIT, in Debug builds only: nothing of it is in a
   Release build or a publish). The window is then made again where it was, so what its code draws (the version line,
-  Update beside Play) stays right. A saved `.cs` file is applied by `dotnet watch`, or the window restarts by itself.
+  Update beside Play) stays right. A saved `.cs` file builds and starts the window again by itself, in a few seconds
+  (`dotnet watch --no-hot-reload`: .NET's own hot reload left the window on old code for an edit it could not patch).
   `-State` opens it in a given state, `-NoGame` with no game yet, `-Fail` with every build stopping half way. Alt+F5
   reloads it by hand. Mistakes in a saved `.axaml` show in the script's terminal.
 
