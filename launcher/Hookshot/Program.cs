@@ -26,12 +26,21 @@ static class Program
         // (what a 2.x Builder handed over, taken in before anything is shown: Handover.cs)
         Handover.AtStart();
         if (start.Play && PlayNow(start.Folder)) return 0;
-        // (X11's window class stays Hookshot, not the executable's name: the desktop's top bar and dock name it so, and the
-        // AppImage's hookshot.desktop matches it, StartupWMClass=Hookshot)
-        AppBuilder.Configure<App>().UsePlatformDetect().With(new X11PlatformOptions { WmClass = "Hookshot" }).WithInterFont().LogToTrace()
-                  .StartWithClassicDesktopLifetime(args);
+        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
         return 0;
     }
+
+    /// The app as Avalonia's tools expect it by this name: an editor's preview pane, and live reload in a Debug build
+    /// (HotAvalonia, scripts/launcher/live.ps1). X11's window class stays Hookshot, not the executable's name: the desktop's top
+    /// bar and dock name it so, and the AppImage's hookshot.desktop matches it (StartupWMClass=Hookshot)
+    public static AppBuilder BuildAvaloniaApp() =>
+        AppBuilder.Configure<App>().UsePlatformDetect().With(new X11PlatformOptions { WmClass = "Hookshot" }).WithInterFont()
+#if HOTAVALONIA_ENABLE
+                  // (live reload: what goes wrong, a mistake in a saved .axaml too, shows in live.ps1's terminal)
+                  .LogToTextWriter(Console.Out, Avalonia.Logging.LogEventLevel.Warning);
+#else
+                  .LogToTrace();
+#endif
 
     /// --play [<folder>]: the game started with no window (the folder's, else the one built last), as the 2.x Builder's --play
     /// does. False: no game there, and the launcher opens on it instead

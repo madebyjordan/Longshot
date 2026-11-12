@@ -37,17 +37,78 @@ public partial class MainWindow : Window
     readonly string? updateTag;              // (the game's own offer: hookshot --update <folder> --tag <tag>, hos_update.c)
     readonly bool update;                    // (--update <folder>, with or without --tag: a 2.x Builder passes it on, docs/launcher-upgrade.md)
 
-    /// (what the window was asked to show first: the menu open on a tab, the older releases unfolded, pre-releases on.
-    /// Development: HOOKSHOT_UI_PREVIEW=menu,tab=build|releases|settings,older,pre)
-    public sealed record Preview(bool Menu, string? Tab, bool Older, bool Pre)
+    /// (what the window was asked to show first: the menu open on a tab, the older releases unfolded, pre-releases on, and a
+    /// made-up build or update in a state, nothing run: building[=0..1], stopped, updating[=0..1], updatestopped.
+    /// Development: HOOKSHOT_UI_PREVIEW=menu,tab=build|releases|settings,older,pre,building=0.4)
+    public sealed record Preview(bool Menu, string? Tab, bool Older, bool Pre, string? State = null, double At = 0.4)
     {
         public static Preview FromEnvironment()
         {
             var p = (Environment.GetEnvironmentVariable("HOOKSHOT_UI_PREVIEW") ?? "").Split(',', StringSplitOptions.TrimEntries);
             var tab = p.FirstOrDefault(x => x.StartsWith("tab="))?[4..];
-            return new(p.Contains("menu") || tab != null, tab, p.Contains("older"), p.Contains("pre"));
+            var state = p.FirstOrDefault(x => x.Split('=')[0] is "building" or "stopped" or "updating" or "updatestopped");
+            var at = state?.Split('=') is [_, var f] && double.TryParse(f, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var v) ? Math.Clamp(v, 0, 1) : 0.4;
+            var first = state?.Split('=')[0] is "building" or "stopped";
+            return new(p.Contains("menu") || tab != null || state != null, tab ?? (state == null ? null : first ? "build" : "releases"),
+                       p.Contains("older"), p.Contains("pre"), state?.Split('=')[0], at);
         }
     }
+
+#if HOTAVALONIA_ENABLE
+    // ---- (development) live reload, Debug builds only (HotAvalonia, scripts/launcher/live.ps1) ----
+    // A saved .axaml fills this window again without its constructor: what the constructor wired up and drew (the buttons'
+    // handlers, Play's version line, Update beside it) stays with the controls it replaced. So a fresh window takes its place,
+    // where this one was and as big, made as this one was (the same folder and preview), and this one closes
+
+    Preview? livePreview;
+    bool liveShown, liveReplaced;
+
+    protected override void OnOpened(EventArgs e)
+    {
+        base.OnOpened(e);
+        liveShown = true;
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property != ContentProperty || !liveShown || liveReplaced || livePreview is not { } again) return;
+        liveReplaced = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            var fresh = new MainWindow(GameFolder.Read(folder.Path), again)
+            {
+                WindowStartupLocation = WindowStartupLocation.Manual, Position = Position, Width = Width, Height = Height,
+                WindowState = WindowState,
+            };
+            if (Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+                desktop.MainWindow = fresh;
+            fresh.Show();
+            closeAsked = true;
+            Close();
+        });
+    }
+#endif
+
+    /// (development) The made-up build or update a preview asks for (Preview.State): a Job never run, fed the lines a builder
+    /// would say up to that point, so the window draws it as it would be. Closing does not ask about it
+    void PreviewJob(Preview preview)
+    {
+        if (preview.State == null) return;
+        var first = preview.State is "building" or "stopped";
+        var tag = folder.Version is { } v && !first ? NextOf(v) : Environment.GetEnvironmentVariable("HOOKSHOT_LATEST_TAG")?.Split(',')[0].TrimEnd('?') ?? "v2.1.0";
+        var j = new Job(tag, first, ahead: true, fetch: !first);
+        foreach (var line in new[] { "@@installed " + tag, "@@stage compile", "@@plan 120 640", "@@eta 1080" }) j.Work.Line(line);
+        j.Work.Line("@@progress " + ((preview.At - 0.2) / 0.7).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        closeAsked = true;
+        if (preview.State is "building" or "updating") job = j;
+        else (stoppedJob, stoppedWhy) = (j, "The build tools stopped: there is not enough space on drive C: (32 GB needed, 4 GB free).");
+    }
+
+    /// (a made-up next release for an update preview: the minor version up)
+    static string NextOf(string version) =>
+        System.Version.TryParse(version.TrimStart('v').Split('-')[0], out var x) ? $"v{x.Major}.{x.Minor + 1}.0" : "v9.9.0";
 
     /// (the releases are in, and the window is drawn as they are: what a screenshot waits for)
     public Task Ready { get; }
@@ -66,6 +127,9 @@ public partial class MainWindow : Window
         this.updateTag = updateTag;
         this.update = update || updateTag != null;
         InitializeComponent();
+#if HOTAVALONIA_ENABLE
+        livePreview = preview;
+#endif
         Chrome();
         olderOpen = preview.Older;
         typicalBuild = BuildTimes.Typical();
@@ -140,6 +204,7 @@ public partial class MainWindow : Window
         ShowLowMem();
         CheckSource();
         FillChoices();
+        PreviewJob(preview);
         Ready = Start();
     }
 

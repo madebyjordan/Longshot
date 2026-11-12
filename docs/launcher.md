@@ -22,6 +22,25 @@ The build runs the trim and AOT analyzers (NativeAOT is on in `Publish.props`) a
 needs reflection the trimmer cannot see, such as `JsonSerializer` without a source-generated context, fails
 `dotnet build` instead of breaking the published launcher.
 
+## Design work: seeing changes as you make them
+
+Two scripts, both in scratch folders under `build/launcher/` (no builder, game or GitHub of this PC is used):
+
+- **`scripts/launcher/live.ps1`**: the launcher in a real window that follows your edits. A saved `.axaml` file shows in it
+  within a second ([HotAvalonia](https://github.com/Kira-NT/HotAvalonia), MIT, in Debug builds only: nothing of it is in a
+  Release build or a publish). The window is then made again where it was, so what its code draws (the version line,
+  Update beside Play) stays right. A saved `.cs` file is applied by `dotnet watch`, or the window restarts by itself.
+  `-State` opens it in a given state, `-NoGame` with no game yet. Alt+F5 reloads it by hand. Mistakes in a saved `.axaml`
+  show in the script's terminal.
+- **`scripts/launcher/sheet.ps1`**: every screen on one page (`build/launcher/sheet/index.html`), drawn off-screen again on
+  each save, about 10 seconds for all of them: the main screen with and without an update, no game yet, building, build
+  stopped, Releases, updating, update stopped, Settings. A Paper export named like a state
+  (`build/launcher/sheet/paper/<state>.png`) shows beside it.
+
+The states a build, an update or a failure is in are made up for both, nothing run: `HOOKSHOT_UI_PREVIEW` takes
+`building[=0..1]`, `stopped`, `updating[=0..1]` and `updatestopped` beside `menu`, `tab=build|releases|settings`, `older`
+and `pre` (`MainWindow.Preview`).
+
 ## Publish
 
 ```powershell

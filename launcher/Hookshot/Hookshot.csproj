@@ -21,6 +21,12 @@
     <PackageReference Include="Avalonia.Headless" Version="11.3.22" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
   </ItemGroup>
+  <!-- (development only) Live reload: a .axaml file saved shows in the running window at once (HotAvalonia, MIT; Alt+F5 reloads
+       the whole window). Debug builds alone: never in a Release build or a publish, and nothing of it ships. scripts/launcher/live.ps1 -->
+  <ItemGroup Condition="'$(Configuration)' == 'Debug'">
+    <PackageReference Include="Avalonia.Markup.Xaml.Loader" Version="11.3.22" PrivateAssets="All" />
+    <PackageReference Include="HotAvalonia" Version="3.1.5" PrivateAssets="All" />
+  </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\builder\HookshotBuilder\LaunchList.cs" Link="Shared\LaunchList.cs" />
     <Compile Include="..\..\builder\HookshotBuilder\LaunchWork.cs" Link="Shared\LaunchWork.cs" />
