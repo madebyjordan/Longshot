@@ -128,14 +128,15 @@ jobs:
       - name: Package installs without fsync
         run: echo force-unsafe-io > /etc/dpkg/dpkg.cfg.d/force-unsafe-io
       # (git and curl for the checkout and the downloads; clang and zlib1g-dev for NativeAOT; libicu70 for the .NET SDK
-      # itself; libfontconfig1, which Skia's library needs to load, as on every desktop system)
+      # itself; libfontconfig1, which Skia's library needs to load, as on every desktop system; file, which appimagetool
+      # needs and the bare container has not got)
       - name: System packages
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
           for try in 1 2 3; do
             apt-get update && apt-get install -y --no-install-recommends \
-              ca-certificates curl git clang zlib1g-dev libicu70 libfontconfig1 && break
+              ca-certificates curl git clang zlib1g-dev libicu70 libfontconfig1 file && break
             [ "$try" = 3 ] && exit 1
             sleep 20
           done

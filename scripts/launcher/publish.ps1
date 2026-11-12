@@ -170,7 +170,7 @@ if (-not $NoSmoke) {
         if ($p.ExitCode -ne 0) { throw "installer smoke test: exit $($p.ExitCode)" }
         $installed = Join-Path $vars.HOOKSHOT_INSTALL_DIR 'HookshotLauncher.exe'
         Test-Launcher $installed (Join-Path $B "smoke-$Rid-installed.png")
-        $p = Start-Process (Join-Path $vars.HOOKSHOT_INSTALL_DIR 'Uninstall.exe') -ArgumentList '/uninstall', '/S' -PassThru -Wait
+        $p = Start-Process (Join-Path $is 'Uninstall.exe') -ArgumentList '/uninstall', '/S' -PassThru -Wait
         $until = (Get-Date).AddSeconds(20)
         while ((Test-Path $vars.HOOKSHOT_INSTALL_DIR) -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 200 }
         if ($p.ExitCode -ne 0 -or (Test-Path $vars.HOOKSHOT_INSTALL_DIR)) { throw 'installer smoke test: the uninstall left the launcher' }

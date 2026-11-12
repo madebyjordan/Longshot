@@ -64,7 +64,7 @@ to it, then the zip's length and `HSZIP001`, which it reads from its own end. It
   Windows' own `tar.exe` and swapped in whole, so an install that stops half way, or one over a launcher that is running,
   leaves the one before as it was. A zip without `HookshotLauncher.exe` at its root is refused;
 - Hookshot goes in the Start menu, on the desktop and in Settings > Apps, whose Uninstall runs `Uninstall.exe` (the installer
-  without its zip);
+  without its zip), kept in the home beside `app`, so a hand-over or update that swaps `app` whole leaves it there;
 - `/S` installs with no questions and starts nothing; `Uninstall.exe /uninstall [/S]` uninstalls.
 
 Uninstalling removes the launcher, its shortcuts and its Apps entry. The games, their saves and (unless the player asks) the

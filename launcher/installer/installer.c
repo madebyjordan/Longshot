@@ -3,7 +3,8 @@
    little-endian, and "HSZIP001"). Installing:
      - the zip unpacked with Windows' own tar.exe beside the install folder, then swapped in whole: an install stopped half way, or
        one over a launcher that is running, leaves the one before as it was;
-     - %LOCALAPPDATA%\HookshotLauncher\app: HookshotLauncher.exe and its files, and Uninstall.exe (this program without the zip).
+     - %LOCALAPPDATA%\HookshotLauncher\app: HookshotLauncher.exe and its files; Uninstall.exe (this program without the zip)
+       beside app, in the home, so that a hand-over or update swapping app whole never takes the uninstaller with it.
        That is where a 2.x Builder's hand-over installs the launcher too (docs/launcher-upgrade.md section 2), so there is one
        launcher on the PC whichever way it came;
      - Hookshot in the Start menu and on the desktop;
@@ -104,7 +105,7 @@ static void env_or(wchar_t *out, const wchar_t *name, int csidl, const wchar_t *
 }
 
 /* the install folder, the two shortcuts, the Apps entry's key, the builders' folder */
-static wchar_t g_dir[BIG], g_start_link[BIG], g_desk_link[BIG], g_key[BIG], g_base[BIG];
+static wchar_t g_dir[BIG], g_home[BIG], g_uninstall[BIG], g_start_link[BIG], g_desk_link[BIG], g_key[BIG], g_base[BIG];
 
 static void places(void) {
     const wchar_t *dir = _wgetenv(L"HOOKSHOT_INSTALL_DIR");
@@ -114,6 +115,11 @@ static void places(void) {
         env_or(home, L"HOOKSHOT_LAUNCHER_HOME", CSIDL_LOCAL_APPDATA, L"HookshotLauncher");
         swprintf(g_dir, BIG, L"%ls\\app", home);
     }
+    /* (the home: the install folder's parent, where Uninstall.exe goes) */
+    wcscpy(g_home, g_dir);
+    wchar_t *cut = wcsrchr(g_home, L'\\');
+    if (cut) *cut = 0;
+    swprintf(g_uninstall, BIG, L"%ls\\Uninstall.exe", g_home);
     const wchar_t *links = _wgetenv(L"HOOKSHOT_INSTALL_LINKS");
     if (links && *links) {
         swprintf(g_start_link, BIG, L"%ls\\Start menu\\Hookshot.lnk", links);
@@ -276,9 +282,9 @@ static int install(const wchar_t *self) {
     }
     DeleteFileW(zipfile);
 
-    /* Uninstall.exe: this program without the zip */
+    /* Uninstall.exe: this program without the zip, put in the home once the launcher is in place */
     wchar_t uninstall[BIG];
-    swprintf(uninstall, BIG, L"%ls\\Uninstall.exe", unpacked);
+    swprintf(uninstall, BIG, L"%ls\\Uninstall.exe", staging);
     if (!copy_part(self, 0, stub, uninstall)) {
         rmtree(staging);
         say(MB_ICONERROR, L"Hookshot could not be installed: its uninstaller could not be written.");
@@ -303,7 +309,10 @@ static int install(const wchar_t *self) {
         say(MB_ICONERROR, L"Hookshot could not be installed in %ls (error %lu). The one before is as it was.", g_dir, GetLastError());
         return 1;
     }
-    rmtree(old), rmtree(staging);
+    rmtree(old);
+    if (!MoveFileExW(uninstall, g_uninstall, MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED))
+        say(MB_ICONWARNING, L"Hookshot is installed, but its uninstaller could not be put in %ls (error %lu).", g_home, GetLastError());
+    rmtree(staging);
 
     /* the shortcuts and Settings > Apps */
     CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
@@ -317,11 +326,11 @@ static int install(const wchar_t *self) {
         set_text(k, L"DisplayVersion", version[0] == L'v' ? version + 1 : version);
         set_text(k, L"Publisher", L"Hookshot");
         set_text(k, L"DisplayIcon", exe);
-        set_text(k, L"InstallLocation", g_dir);
+        set_text(k, L"InstallLocation", g_home);
         set_text(k, L"URLInfoAbout", L"https://github.com/NotRexed/Hookshot");
-        swprintf(text, BIG + 32, L"\"%ls\\Uninstall.exe\" /uninstall", g_dir);
+        swprintf(text, BIG + 32, L"\"%ls\" /uninstall", g_uninstall);
         set_text(k, L"UninstallString", text);
-        swprintf(text, BIG + 32, L"\"%ls\\Uninstall.exe\" /uninstall /S", g_dir);
+        swprintf(text, BIG + 32, L"\"%ls\" /uninstall /S", g_uninstall);
         set_text(k, L"QuietUninstallString", text);
         set_number(k, L"NoModify", 1);
         set_number(k, L"NoRepair", 1);
@@ -357,9 +366,9 @@ static void forget_launcher(void) {
 }
 
 static int uninstall(const wchar_t *self) {
-    /* (run from the install folder, as Settings > Apps runs it: a copy in %TEMP% does it, so that the folder can go whole) */
+    /* (run from the home or the install folder, as Settings > Apps runs it: a copy in %TEMP% does it, so that both can go) */
     wchar_t prefix[BIG + 2], cmd[BIG * 3];
-    swprintf(prefix, BIG + 2, L"%ls\\", g_dir);
+    swprintf(prefix, BIG + 2, L"%ls\\", g_home);
     if (!_wcsnicmp(self, prefix, wcslen(prefix))) {
         wchar_t tmp[MAX_PATH], copy[BIG];
         GetTempPathW(MAX_PATH, tmp);
@@ -383,6 +392,10 @@ static int uninstall(const wchar_t *self) {
         if (say(MB_RETRYCANCEL | MB_ICONWARNING, L"Hookshot is running. Close it, then choose Retry.") != IDRETRY || g_quiet) return 3;
     }
     rmtree(gone);
+    /* (the uninstaller, then the home's import folder and the home itself while nothing else is in them) */
+    wchar_t import[BIG];
+    swprintf(import, BIG, L"%ls\\import", g_home);
+    DeleteFileW(g_uninstall), RemoveDirectoryW(import), RemoveDirectoryW(g_home);
     DeleteFileW(g_start_link), DeleteFileW(g_desk_link);
     RegDeleteKeyW(HKEY_CURRENT_USER, g_key);
     forget_launcher();
