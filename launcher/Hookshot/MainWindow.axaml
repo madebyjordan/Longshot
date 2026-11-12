@@ -11,9 +11,12 @@
        Linux) -->
   <Window.Resources>
     <FontFamily x:Key="Glyphic">avares://HookshotLauncher/Assets/Fonts#Faculty Glyphic</FontFamily>
-    <!-- Play's torn white card and the note's parchment (Paper: "Main Button", the note's "Button") -->
+    <!-- Play's torn white card (Paper: "Main Button") -->
     <StreamGeometry x:Key="CardShape">M163.813 67.791L142.538 66.52L110.135 66.52L97.695 66.52L83.74 64.81L39.33 64.81L26.76 63.624L19.703 64.81L0 64.81L0 0.81L38.159 0L60.403 0L74.132 0.81L146.3 0.81L161.912 1.4L171.616 0.81L183.89 0.81L193.957 0.81L206 0.81L206 64.81L178.628 67.791L163.813 67.791Z</StreamGeometry>
-    <StreamGeometry x:Key="NoteShape">M219.379-5.001C214.625-3.235 210.929-2.425 205.068-2.806 201.855-3.048 200.176-2.115 198.712-1.302 197.299-0.517 196.086 0.157 193.889-0.441 191.87-0.992 188.713-0.837 184.934-0.655 180.357-0.434 174.871-0.167 169.39-1.054 169.248-1.075 169.105-1.097 168.966-1.118 168.966-1.118 169.023-1.114 169.023-1.114 163.682-1.86 160.875-1.15 157.818-0.377 155.585 0.188 153.219 0.788 149.636 0.876 145.289 0.98 141.787-0.641 138.479-2.174 135.21-3.687 132.13-5.112 128.607-4.704 126.022-4.413 124.36-3.908 122.897-3.463 120.264-2.662 118.272-2.056 112.681-3.263 109.728-3.898 105.262-4.464 100.24-5.001 100.24-5.001 0-5.001 0-5.001 0-5.001 0 75.473 0 75.473 0.326 75.571 0.646 75.677 0.96 75.79 2.058 76.173 1.878 78.223 1.721 80.006 1.597 81.413 1.488 82.653 2.032 82.786 9.937 84.76 17.852 85.489 25.746 86.213 32.917 86.873 40.069 87.53 47.176 89.12 47.738 89.257 47.632 90.816 47.523 92.419 47.405 94.147 47.284 95.931 47.987 96.049 62.618 98.589 75.331 98.126 89.103 97.627 95.607 97.391 102.346 97.145 109.635 97.205 111.194 97.215 112.795 97.219 114.429 97.224 131.05 97.282 151.18 97.35 167.769 102.796 167.769 102.796 167.81 102.809 167.81 102.809 167.81 102.809 170.733 102.809 170.733 102.809 170.733 102.809 175.061 102.809 175.061 102.809 175.061 102.809 187.041 102.809 187.041 102.809 196.613 100.645 206.664 100.99 216.313 102.809 216.313 102.809 225 102.809 225 102.809 225 102.809 225-5.001 225-5.001 225-5.001 219.379-5.001 219.379-5.001Z</StreamGeometry>
+    <!-- (the note: its colour, and the edges of Play's card above and below its body, their own 0 at the body's edge) -->
+    <SolidColorBrush x:Key="NoteFill" Color="#B89A65"/>
+    <StreamGeometry x:Key="NoteTopEdge">M0 0.81L38.159 0L60.403 0L74.132 0.81L146.3 0.81L161.912 1.4L171.616 0.81L206 0.81L206 3L0 3Z</StreamGeometry>
+    <StreamGeometry x:Key="NoteBottomEdge">M0 0L206 0L206 1.186L178.628 4.167L163.813 4.167L142.538 2.896L97.695 2.896L83.74 1.186L39.33 1.186L26.76 0L19.703 1.186L0 1.186Z</StreamGeometry>
   </Window.Resources>
   <Window.Styles>
     <!-- Play: the torn white card, a little grey under the pointer and pressed; at 0.4 while it cannot be pressed -->
@@ -212,10 +215,13 @@
     </StackPanel>
 
     <!-- ==== the note at the bottom left: an update out (a Hookshot release, or the launcher's own), one under way, one that stopped ==== -->
-    <Panel Name="Note" Width="225" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="24,0,0,24" IsVisible="False" ZIndex="2">
-      <!-- (the parchment as tall as what it says: a shape that fills would take all the height it is offered) -->
-      <Path Stretch="Fill" Fill="#B89A65" Data="{StaticResource NoteShape}" VerticalAlignment="Top" Height="{Binding #NoteBody.Bounds.Height}"/>
-      <Border Name="NoteBody" MinHeight="108" Padding="14" VerticalAlignment="Top">
+    <!-- (a card that grows with what it says, as wide as 225 and up to 300, as tall as its lines: a plain body, and the edges of
+         Play's card along its top and bottom, a few pixels high, which stretch only sideways, so nothing of it warps however big
+         it is. The edges are as wide as the body: a shape that fills would take all the width it is offered) -->
+    <Grid Name="Note" MinWidth="225" MaxWidth="300" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="24,0,0,24" IsVisible="False"
+          ZIndex="2" RowDefinitions="Auto,Auto,Auto">
+      <Path Stretch="Fill" Height="3" Width="{Binding #NoteBody.Bounds.Width}" Fill="{StaticResource NoteFill}" Data="{StaticResource NoteTopEdge}"/>
+      <Border Name="NoteBody" Grid.Row="1" Background="{StaticResource NoteFill}" MinHeight="101" Padding="14,10">
       <StackPanel Spacing="7" VerticalAlignment="Center">
         <TextBlock Name="NoteTitle" Classes="ink" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
         <TextBlock Name="FootWhy" Classes="ink" FontSize="12" LineHeight="16" Foreground="#7A2418" TextAlignment="Center" TextWrapping="Wrap"
@@ -239,7 +245,8 @@
         </StackPanel>
       </StackPanel>
       </Border>
-    </Panel>
+      <Path Grid.Row="2" Stretch="Fill" Height="4.2" Width="{Binding #NoteBody.Bounds.Width}" Fill="{StaticResource NoteFill}" Data="{StaticResource NoteBottomEdge}"/>
+    </Grid>
 
     <!-- what the hidden programs said: Show details -->
     <TextBox Name="Log" IsVisible="False" Margin="636,72,16,24" IsReadOnly="True" BorderThickness="1" BorderBrush="#303030"
