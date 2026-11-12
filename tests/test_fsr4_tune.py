@@ -6,6 +6,12 @@ writes into. Built as C++ and run, each result checked with spirv-val:
   Function arrays gone; the table that is written stays
 - every loop of the layer unrolls, and a size limit just above the layer's own keeps loops rolled within it
 - the network's layers alone (..._passN) get 64 lanes; the prepass, the postpass and a pass's _post do not
+- a binding takes the tail in only at offset 0 with the whole buffer (or a range past the tail), and one of exactly the
+  library's size is widened to it
+And in gpu/vk/vk_fsr4.cpp's hooks (read as text): the tail is kept per buffer and forgotten when the library destroys it,
+its buffer is made a transfer destination, its bindings are checked where descriptors are written, a pipeline whose tail
+cannot be read gets AMD's own in its place, and the background builds are counted and stopped when the window closes,
+before the pipeline cache's save (gpu/vk/vk_main.cpp).
 No game or GPU required.
 
 python -I -B tests/test_fsr4_tune.py [--cxx g++] [--spirv-val spirv-val]
@@ -56,7 +62,17 @@ static int loops(const std::vector<uint32_t>& w) {
 }
 // tune <in.spv> <out prefix> <base word> <tail words...>: both rewrites, results to files, facts on stdout
 // names <entry>...: which get 64 lanes, which are the postpass
+// covers <size> <tail> <offset> <range>...: covers_tail and widened_range for each offset/range pair
 int main(int argc, char** argv) {
+    if (argc >= 4 && std::string(argv[1]) == "covers") {
+        const uint64_t size = strtoull(argv[2], nullptr, 10), tail = strtoull(argv[3], nullptr, 10);
+        for (int i = 4; i + 1 < argc; i += 2) {
+            const uint64_t o = strtoull(argv[i], nullptr, 10), r = strtoull(argv[i + 1], nullptr, 10);
+            std::printf("%llu %llu %d %llu\n", (unsigned long long)o, (unsigned long long)r, fsr4_tune::covers_tail(o, r, size, tail),
+                        (unsigned long long)fsr4_tune::widened_range(o, r, size, tail));
+        }
+        return 0;
+    }
     if (argc >= 2 && std::string(argv[1]) == "names") {
         for (int i = 2; i < argc; i++) std::printf("%s %d %d\n", argv[i], fsr4_tune::wants_wave64(argv[i]), fsr4_tune::is_postpass(argv[i]));
         return 0;
@@ -128,12 +144,76 @@ def facts(out):
     return {line.split()[0]: line.split()[1:] for line in out.splitlines()}
 
 
+def function_body(text, signature):
+    """The body of the function whose definition starts with `signature`, by its braces"""
+    at = text.find(signature)
+    if at < 0:
+        return ""
+    i = text.index("{", at)
+    depth = 0
+    for j in range(i, len(text)):
+        depth += {"{": 1, "}": -1}.get(text[j], 0)
+        if depth == 0:
+            return text[i:j + 1]
+    return ""
+
+
+def source_problems():
+    """The hooks' safety in vk_fsr4.cpp and the close in vk_main.cpp, read as text"""
+    problems = []
+    src = (VK / "vk_fsr4.cpp").read_text(encoding="utf-8")
+    proc = function_body(src, "VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL device_proc(")
+    for name, hook in [("vkDestroyBuffer", "destroy_buffer"), ("vkUpdateDescriptorSets", "update_sets"),
+                       ("vkCmdPushDescriptorSetKHR", "push_set"), ("vkGetDescriptorEXT", "get_descriptor"),
+                       ("vkGetBufferDeviceAddress", "buffer_address"), ("vkDestroyShaderModule", "destroy_shader_module")]:
+        if '"%s"' % name not in proc or "&%s;" % hook not in proc:
+            problems.append("device_proc does not hand the library %s for %s" % (hook, name))
+    create = function_body(src, "VKAPI_ATTR VkResult VKAPI_CALL create_buffer(")
+    if "VK_BUFFER_USAGE_TRANSFER_DST_BIT" not in create:
+        problems.append("create_buffer does not make the grown buffer a transfer destination (vkCmdUpdateBuffer writes its tail)")
+    if "forget_locked(*b)" not in create or "forget_locked(b)" not in function_body(src, "VKAPI_ATTR void VKAPI_CALL destroy_buffer("):
+        problems.append("a destroyed buffer (or its handle given out again) is not forgotten with its tail")
+    forget = function_body(src, "void forget_locked(")
+    if "cur = 0" not in forget or "bigs.erase" not in forget:
+        problems.append("forget_locked does not drop the buffer and stop new modules being rewritten against it")
+    module = function_body(src, "VKAPI_ATTR VkResult VKAPI_CALL create_shader_module(")
+    if "bigs.find(cur)" not in module or "mod.gen = cur" not in module:
+        problems.append("create_shader_module does not rewrite against the newest live buffer and remember which")
+    binding = function_body(src, "void note_binding_locked(")
+    if "fsr4_tune::covers_tail" not in binding or "g.bound = -1" not in binding:
+        problems.append("note_binding_locked does not check a binding with covers_tail and mark one without the tail")
+    dispatch = function_body(src, "VKAPI_ATTR void VKAPI_CALL cmd_dispatch(")
+    if "bound == 1" not in dispatch or "make_plain(" not in dispatch or "real_bind(cb, VK_PIPELINE_BIND_POINT_COMPUTE, use)" not in dispatch:
+        problems.append("cmd_dispatch does not write the tail only for a live, checked buffer, with AMD's own pipeline otherwise")
+    if "real_update(cb, big.buffer" not in dispatch:
+        problems.append("cmd_dispatch does not write the tail into the pipeline's own buffer")
+    pipes = function_body(src, "VKAPI_ATTR VkResult VKAPI_CALL create_compute_pipelines(")
+    detach = pipes.find(".detach()")
+    if detach >= 0 and pipes.rfind("jobs().running++", 0, detach) < 0:
+        problems.append("an unroll thread is started without being counted (fsr4_close waits for the count)")
+    if "closing" not in pipes:
+        problems.append("create_compute_pipelines starts unroll jobs after the window closed")
+    job = function_body(src, "void build_unrolled(")
+    if "j.running--" not in job or "if (closing) return;" not in job:
+        problems.append("build_unrolled does not end its count or leave when the window closed")
+    close = function_body(src, "void close()")
+    if "closing.exchange(true)" not in close or "wait_for(" not in close:
+        problems.append("tune::close does not stop the jobs and wait for the one building")
+    if "void fsr4_close() { tune::close(); }" not in src or src.count("void fsr4_close()") != 2:
+        problems.append("fsr4_close is not defined in both builds (with and without FSR)")
+    main_cpp = (VK / "vk_main.cpp").read_text(encoding="utf-8")
+    closer = function_body(main_cpp, "void mkwvk_close_asked(void)")
+    if "fsr4_close();" not in closer or closer.find("fsr4_close();") > closer.find("pipeline_cache_close();"):
+        problems.append("mkwvk_close_asked does not stop FSR 4's builds before the pipeline cache's save")
+    return problems
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--cxx", default="g++")
     p.add_argument("--spirv-val", default="spirv-val")
     a = p.parse_args()
-    problems = []
+    problems = source_problems()
     with tempfile.TemporaryDirectory() as tmp:
         t = Path(tmp)
         exe = t / "tune.exe"
@@ -214,10 +294,27 @@ def main():
             entry, w64, post = line.split()
             if (int(w64), int(post)) != want[entry]:
                 problems.append("%s: 64 lanes %s, postpass %s; wanted %d, %d" % (entry, w64, post, *want[entry]))
+
+        # --- which bindings take the tail in: (offset, range) -> (covers, widened range)
+        size, tail, whole = 100 << 20, 64 << 10, (1 << 64) - 1
+        cases = {(0, whole): (1, whole), (0, size + tail): (1, size + tail), (0, size + 2 * tail): (1, size + 2 * tail),
+                 (0, size): (0, size + tail), (0, size - 4): (0, size - 4), (256, whole): (0, whole),
+                 (256, size): (0, size), (0, size + tail - 4): (0, size + tail - 4)}
+        args = [x for pair in cases for x in pair]
+        for line in run("covers", size, tail, *args).splitlines():
+            o, r, covers, widened = (int(x) for x in line.split())
+            if (covers, widened) != cases[(o, r)]:
+                problems.append("a binding at offset %d, range %d: covers the tail %d, widened to %d; wanted %d, %d" %
+                                (o, r, covers, widened, *cases[(o, r)]))
+            elif covers == 0 and o == 0 and widened != r:
+                # (what is widened must then cover it)
+                if not run("covers", size, tail, o, widened).split()[2] == "1":
+                    problems.append("the widened range %d at offset 0 does not cover the tail" % widened)
     if problems:
         raise SystemExit("FAIL:\n  " + "\n  ".join(problems))
     print("PASS: FSR 4's weight tables move to the writable buffer's tail and are read where they were put, a written "
-          "table stays, every loop unrolls valid within a size limit, the layers alone get 64 lanes")
+          "table stays, every loop unrolls valid within a size limit, the layers alone get 64 lanes; bindings are checked "
+          "for the tail, the tail goes with its buffer, the background builds stop at the close")
 
 
 if __name__ == "__main__":

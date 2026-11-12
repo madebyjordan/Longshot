@@ -1,8 +1,10 @@
 // AMD FSR 4's passes, tuned as the library hands them to the driver (vk_fsr4.cpp): plain functions over SPIR-V, no Vulkan
 // calls, so tests/test_fsr4_tune.py builds and runs them as they are.
 //
-// Measured 2026-11-12 on an RX 6700 XT (FSR 4.1.2, 720p -> 1440p, all of its passes 8.97 ms), each change checked bit for
-// bit against AMD's own output:
+// Measured 2026-11-12 on an RX 6700 XT, Adrenalin 26.10.1, Windows 11 (FSR 4.1.2, 720p -> 1440p, all of its passes 8.97 ms),
+// each change checked bit for bit against AMD's own output on that driver. None of them reorders the arithmetic, but with the
+// weights constants in the code another driver (or RADV) may fold them differently: elsewhere the same maths, not
+// necessarily the same bits:
 //  - wave64 for the network's layers (entry points "..._passN"): they ask for 32 lanes, and their loops' scalar work is then
 //    paid once per 32 pixels instead of 64: 8.97 -> 6.85 ms. The prepass and postpass stay at 32 (slower at 64).
 //  - weights out of per-thread arrays: the postpass and the layers copy constant weight tables (2.8 KB; 576 and 128 words,
@@ -211,6 +213,18 @@ inline bool arrays_to_buffer(const uint32_t* code, size_t words, uint32_t base_w
     out.swap(o);
     tail.insert(tail.end(), new_tail.begin(), new_tail.end());
     return true;
+}
+
+/// Whether a storage-buffer binding (offset and range as in VkDescriptorBufferInfo, ~0 for VK_WHOLE_SIZE) of a buffer the
+/// library asked `size` bytes of, made `tail` bytes larger, takes in the tail the rewritten shaders read: they read it at
+/// fixed places from the buffer's start, so only a binding at offset 0 that reaches past `size + tail` does
+inline bool covers_tail(uint64_t offset, uint64_t range, uint64_t size, uint64_t tail) {
+    return offset == 0 && (range == ~0ull || range >= size + tail);
+}
+/// The range to bind in a binding's place: exactly what the library asked for, at offset 0, widened to the tail (the buffer
+/// is that large); any other as it was
+inline uint64_t widened_range(uint64_t offset, uint64_t range, uint64_t size, uint64_t tail) {
+    return offset == 0 && range == size ? size + tail : range;
 }
 
 } // namespace fsr4_tune
