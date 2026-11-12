@@ -915,6 +915,34 @@
           </Grid>
         </Border>
 
+        <!-- ===== the hand-over to the Hookshot Launcher (Upgrader.cs, docs/launcher-upgrade.md): over the whole screen, what
+             happens, then Upgrade or Not now. An update whose release ships the launcher, the game's update offer naming one, and
+             a Builder with no build tools (the bridge) open it ===== -->
+        <Grid x:Name="HandoverPage" Background="#F2121212" Visibility="Collapsed">
+          <Border Width="560" VerticalAlignment="Center" HorizontalAlignment="Center" Background="#1E1E1E" BorderBrush="#363636"
+                  BorderThickness="1" CornerRadius="2" Padding="28,26">
+            <StackPanel>
+              <TextBlock x:Name="HandoverTitle" FontFamily="{StaticResource Serif}" FontSize="26" Foreground="#FFFFFF" TextWrapping="Wrap"/>
+              <TextBlock x:Name="HandoverSub" Style="{StaticResource Small}" Foreground="#B8B8B8" TextWrapping="Wrap" Margin="0,8,0,0"/>
+              <TextBlock x:Name="HandoverHead" Style="{StaticResource Line}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,22,0,0"/>
+              <TextBlock x:Name="HandoverSteps" Style="{StaticResource Small}" FontSize="13" LineHeight="22" Foreground="#D0D0D0"
+                         TextWrapping="Wrap" Margin="0,10,0,0"/>
+              <ProgressBar x:Name="HandoverBar" Height="4" Minimum="0" Maximum="1" Margin="0,18,0,0" Background="#2B2B2B" BorderThickness="0"
+                           Foreground="#D2823F" Visibility="Collapsed"/>
+              <TextBlock x:Name="HandoverStatus" Style="{StaticResource Small}" FontSize="13" Foreground="#B8B8B8" TextWrapping="Wrap"
+                         Margin="0,10,0,0" Visibility="Collapsed"/>
+              <Grid Margin="0,26,0,0">
+                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <Button x:Name="HandoverPageLink" Style="{StaticResource SmallLink}" HorizontalAlignment="Left" VerticalAlignment="Center"
+                        Click="HandoverPageClick"/>
+                <Button x:Name="HandoverLater" Grid.Column="1" Style="{StaticResource Block}" Padding="18,0" Margin="0,0,10,0" Click="HandoverLaterClick"/>
+                <Button x:Name="HandoverGo" Grid.Column="2" Style="{StaticResource Block}" Padding="22,0" Background="#D2823F"
+                        BorderBrush="#D2823F" Click="HandoverGoClick"/>
+              </Grid>
+            </StackPanel>
+          </Border>
+        </Grid>
+
         <!-- the window's name, at the left of its top 48, over the menu as the drawing has it -->
         <StackPanel Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Left" Height="48" Margin="16,0,0,0" IsHitTestVisible="False">
           <Image Source="pack://application:,,,/Images/hookshot.png" Width="16" Height="16" VerticalAlignment="Center"

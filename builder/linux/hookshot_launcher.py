@@ -575,6 +575,11 @@ class Launcher(object):
 
         def run():
             try:
+                # (a release that ships the Hookshot Launcher: the Builder's hand-over screen instead, nothing downloaded yet,
+                # docs/launcher-upgrade.md. GitHub not answering is no launcher release: the update goes on as before)
+                offer = self.hb.launcher_offer(target) if target else None
+                if offer is not None:
+                    return app.lines.put(("handover", (folder, offer)))
                 root = linux_update.running_root()
                 if root is None:
                     raise RuntimeError("These tools are a source checkout, so they cannot download a release. Start the AppImage to update")

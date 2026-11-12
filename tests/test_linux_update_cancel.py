@@ -198,6 +198,7 @@ class Window:
     def __init__(self, proc=None, tools="v1", manifest_tag="v1"):
         # (latest: the version GitHub offers, the one the update builds)
         self.proc, self.tools, self.update_folder, self.update_tag, self.fetched, self.latest = proc, tools, "", None, False, manifest_tag
+        self.offer, self.launcher_for = None, None   # (no launcher release: hookshot_builder.launcher_offer)
         self.stop_update = threading.Event()
         self.stage_text = SimpleNamespace(set=lambda text: setattr(self, "stage", text))
         self.stage, self.shown, self.killed, self.threads, self.installs = "", [], [], [], []
@@ -214,6 +215,7 @@ class Window:
             fetch_bytes=linux_update.fetch_bytes, game_version=lambda folder: (tools,), older_version=lambda new, old: False)
         scope = {"os": SimpleNamespace(killpg=lambda pid, sig: self.killed.append(pid)), "signal": SimpleNamespace(SIGTERM=15),
                  "linux_update": update, "queue": queue, "traceback": __import__("traceback"),
+                 "launcher_offer": lambda tag, quiet=True: None,
                  "threading": SimpleNamespace(Thread=lambda target, daemon: SimpleNamespace(start=lambda: self.threads.append(target)))}
         self.cancel_, self.begin_update_, self.pump_ = method("cancel", scope), method("begin_update", scope), method("pump", scope)
         # (pump hands each line to message_in, which acts on it)

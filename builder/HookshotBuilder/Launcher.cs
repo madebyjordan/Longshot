@@ -229,10 +229,13 @@ public partial class MainWindow
     }
 
     /// (a release brought into the folder: by its row, or by Update Available)
-    void Bring(LaunchChoice c)
+    async void Bring(LaunchChoice c)
     {
         if (c.Tag is not { } tag || Busy) return;
         var ahead = launchBuilt == null || !IsRelease(launchBuilt) || Newer(tag, launchBuilt);
+        // (a release that ships the Hookshot Launcher: the hand-over screen, which says what happens and asks, instead of an update
+        // that would build the game with tools that release has not got, docs/launcher-upgrade.md)
+        if (ahead && Shot == null && await HandOverInstead(launchFolder, tag)) return;
         // (kept for this folder, as Play keeps what it played: the builder opened with nothing asked finds the game by it)
         SaveChoice(launchFolder, c.Key);
         // (beside the builder in use, by the setup's engine mode, when the release has what it installs from: LaunchList.ByEngine)

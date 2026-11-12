@@ -112,6 +112,14 @@ public partial class MainWindow : Window
 
     async void Start()
     {
+        // (the Hookshot Launcher installed: the game folder's launcher and the game's update offer still start this Builder, which
+        // passes --launch and --update on, docs/launcher-upgrade.md section 4. Not a portable Builder: its folders stay its own)
+        if (!BuilderHome.Portable && Upgrader.Installed() is { } launcher && Upgrader.Forward(Environment.GetCommandLineArgs()[1..]) is { } forward)
+        {
+            Upgrader.Start(launcher, forward);
+            Application.Current.Shutdown();
+            return;
+        }
         // (development) HOOKSHOT_TEST_SHORTCUTS=<game folder>: both shortcuts made for it, the result in the log beside the app, and out
         if (Environment.GetEnvironmentVariable("HOOKSHOT_TEST_SHORTCUTS") is { Length: > 0 } testFolder)
         {
@@ -121,6 +129,8 @@ public partial class MainWindow : Window
             Leave();
             return;
         }
+        // (the bridge, docs/launcher-upgrade.md section 5: a launcher release's Builder without the build tools opens on the hand-over)
+        if (Tools.Find() == null && await Bridge()) return;
         if (launchAt is { } launchFolder)   // (hookshot.exe in the game folder, or the game built last: the launcher at once, Launcher.cs)
         {
             ShowLauncher(launchFolder);
@@ -128,6 +138,14 @@ public partial class MainWindow : Window
         }
         if (Environment.GetCommandLineArgs().Contains("--update"))
         {
+            // (the game's offer names a launcher release: the hand-over screen instead, nothing downloaded yet)
+            var (updateFolder, updateTag, fetched) = Upgrader.UpdateArgs(Environment.GetCommandLineArgs());
+            if (!fetched && updateTag != null && updateTag != Tools.Find()?.Version && await Offer(updateTag) is { } offered)
+            {
+                (offerFor, handoverAlone) = (updateTag, true);
+                ShowHandover(updateFolder, offered);
+                return;
+            }
             Updater.FromCommandLine(this);
             await ShotWhenEnded();
             return;
@@ -442,6 +460,7 @@ public partial class MainWindow : Window
         PrepareTick.IsChecked = !s.PrepareLater;
         if (!string.IsNullOrEmpty(s.Out)) OutPath.Text = s.Out;
         DlssTick.IsChecked = s.Dlss;
+        dlssLicense = s.DlssLicense;
         // (on only with AMD's license accepted, as a build takes it: a switch saved on before the license was asked showed on,
         // and no build used it. Switched on here, the license is asked)
         FsrTick.IsChecked = s.Fsr && s.FsrLicense;
@@ -472,7 +491,8 @@ public partial class MainWindow : Window
             var s = new BuilderSettings { Out = BuilderHome.SavePath(OutPath.Text),
                                           Nup = BuilderHome.SavePath(romfs == null ? chosenNup : null),
                                           Romfs = BuilderHome.SavePath(romfs), Exefs = BuilderHome.SavePath(exefs),
-                                          Dlss = DlssTick.IsChecked == true, Fsr = FsrTick.IsChecked == true,
+                                          Dlss = DlssTick.IsChecked == true, DlssLicense = dlssLicense,
+                                          Fsr = FsrTick.IsChecked == true,
                                           FsrLicense = fsrLicense,
                                           PrepareLater = PrepareTick.IsChecked != true,
                                           MemoryGb = MemoryBox.SelectedItem is int gb ? gb : null,
@@ -807,9 +827,14 @@ public partial class MainWindow : Window
         "NVIDIA DLSS is NVIDIA's, not Hookshot's. With it ticked, the build downloads NVIDIA's DLSS SDK (release v310.9.16) from " +
         "github.com/NVIDIA/DLSS, under NVIDIA's own license, the NVIDIA RTX SDKs license:\n\n" +
         "https://github.com/NVIDIA/DLSS/blob/9981c6350dc58c0ce21f024fd65e31e851c31689/LICENSE.txt\n\n" +
-        "Its files stay on this PC (in the builder's ngx-sdk folder, and nvngx_dlss.dll in the game folder's ngx folder). " +
+        "Its files stay on this PC (in the builder's ngx-sdk folder, and nvngx_dlss.dll and nvngx_dlssg.dll in the game " +
+        "folder's ngx folder). " +
         "Hookshot never includes or shares them: never share a game folder built with them.\n\n" +
         "Do you accept NVIDIA's license?";
+
+    /// NVIDIA's license accepted on the DLSS tick, kept in the settings (DlssLicense): an update keeps a folder's DLSS by it.
+    /// It was the SDK's LICENSE.txt, a download: with the SDK gone, the update built without DLSS and its runtime went
+    bool dlssLicense;
 
     /// The NVIDIA DLSS tick: NVIDIA's license first, and the tick stays only when it is accepted
     void DlssChanged(object sender, RoutedEventArgs e)
@@ -817,6 +842,8 @@ public partial class MainWindow : Window
         if (DlssTick.IsChecked == true &&
             MessageBox.Show(this, DlssLicense, "NVIDIA DLSS", MessageBoxButton.YesNo, MessageBoxImage.Information) != MessageBoxResult.Yes)
             DlssTick.IsChecked = false;
+        else if (DlssTick.IsChecked == true)
+            dlssLicense = true;
         SaveSettings();   // (kept at once, not only when Build is pressed: ticked and closed, it is still ticked next time)
         ShowRebuildNote();
     }
@@ -1330,6 +1357,131 @@ public partial class MainWindow : Window
         catch (Exception) { }   // (no browser to open it)
     }
 
+    // ================= the hand-over to the Hookshot Launcher (Upgrader.cs, docs/launcher-upgrade.md) =================
+
+    object? offer;   // (the launcher release the update target is: an Upgrader.Manifest, or the error to say)
+    string? offerFor, handoverFolder;
+    bool bridge, upgrading;
+    bool handoverAlone;   // (opened by the game's update offer: nothing else was set up behind it, so Not now closes)
+
+    internal string Text(S s) => T(s);
+
+    /// Quiet: GitHub not answering is null, and the update goes on as before. A list too new for this Builder is its error
+    static async Task<object?> Offer(string? tag, bool quiet = true)
+    {
+        try { return await Upgrader.Probe(tag); }
+        catch (Upgrader.TooNewException e) { return e; }
+        catch (Exception e) { return quiet ? null : e; }
+    }
+
+    /// (a release brought into the game folder, Launcher.cs Bring: when it ships the launcher, the hand-over screen instead of the
+    /// update, nothing downloaded yet. One download of its hookshot-launcher.txt, not the API; GitHub not answering: the update)
+    internal async Task<bool> HandOverInstead(string folder, string? tag)
+    {
+        if (tag == null || tag == Tools.Find()?.Version || await Offer(tag) is not { } found) return false;
+        offerFor = tag;
+        ShowHandover(folder, found);
+        return true;
+    }
+
+    /// (the bridge, section 5: a launcher release's Builder without the build tools, which an older Builder updated to) The
+    /// hand-over screen alone, when the release these files name is a launcher release; else the window as it was
+    async Task<bool> Bridge()
+    {
+        string? own = null;
+        try { own = File.ReadAllText(System.IO.Path.Combine(AppContext.BaseDirectory, "tools", "version.txt")).Trim(); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        if (await Offer(string.IsNullOrEmpty(own) ? null : own) is not { } found) return false;
+        bridge = true;
+        offerFor = own;
+        ShowHandover(Upgrader.UpdateArgs(Environment.GetCommandLineArgs()).Folder ?? LaunchArg(), found);
+        return true;
+    }
+
+    void ShowHandover(string? folder, object? found)
+    {
+        handoverFolder = string.IsNullOrEmpty(folder) ? null : folder;
+        offer = found;
+        HandoverTitle.Text = T(S.HandoverTitle);
+        HandoverSub.Text = T(S.HandoverSub);
+        HandoverPageLink.Content = T(S.ReleasePage);
+        HandoverLater.Content = T(S.NotNow);
+        HandoverGo.Content = T(S.Upgrade);
+        HandoverBar.Visibility = HandoverStatus.Visibility = Visibility.Collapsed;
+        Upgrader.Line? line = null;
+        var why = (found as Exception)?.Message;
+        if (found is Upgrader.Manifest m)
+        {
+            try { line = m.This; }
+            catch (InvalidDataException e) { why = e.Message; }
+        }
+        if (line != null && found is Upgrader.Manifest release)
+        {
+            HandoverHead.Text = string.Format(T(S.HandoverHead), release.Tag);
+            HandoverHead.Foreground = Brushes.White;
+            HandoverSteps.Text = string.Format(T(S.HandoverSteps), Math.Max(1, line.Size >> 20), Upgrader.Home,
+                                               handoverFolder ?? T(S.HandoverYourFolder));
+            HandoverSteps.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            HandoverHead.Text = why ?? string.Format(T(S.NoLauncher), offerFor);
+            HandoverHead.Foreground = BadInk;
+            HandoverSteps.Visibility = Visibility.Collapsed;
+        }
+        HandoverGo.IsEnabled = line != null;
+        HandoverPage.Visibility = Visibility.Visible;
+        HandoverGo.Focus();
+    }
+
+    async void HandoverGoClick(object sender, RoutedEventArgs e)
+    {
+        if (offer is not Upgrader.Manifest m) return;
+        upgrading = true;
+        HandoverGo.IsEnabled = false;
+        HandoverLater.Content = T(S.Cancel);
+        HandoverBar.Value = 0;
+        HandoverBar.Visibility = HandoverStatus.Visibility = Visibility.Visible;
+        HandoverStatus.Foreground = HandoverSub.Foreground;
+        try { await Upgrader.Run(this, m, handoverFolder); }
+        catch (OperationCanceledException) { HandoverFailed(T(S.UpgradeCancelled)); }
+        catch (Exception ex) { HandoverFailed(ex.Message); }
+        finally
+        {
+            upgrading = false;
+            download = null;
+        }
+    }
+
+    void HandoverFailed(string why)
+    {
+        HandoverBar.Visibility = Visibility.Collapsed;
+        HandoverStatus.Text = string.Format(T(S.UpgradeFailed), why);
+        HandoverStatus.Foreground = BadInk;
+        HandoverGo.Content = T(S.TryAgain);
+        HandoverGo.IsEnabled = true;
+        HandoverLater.Content = T(S.NotNow);
+    }
+
+    /// Not now: back where the player came from; the bridge, or a start from the game's update offer, closes
+    void HandoverLaterClick(object sender, RoutedEventArgs e)
+    {
+        if (upgrading) download?.Cancel();
+        else if (bridge || handoverAlone) Application.Current.Shutdown();
+        else HandoverPage.Visibility = Visibility.Collapsed;   // (back to the launcher as it was)
+    }
+
+    void HandoverPageClick(object sender, RoutedEventArgs e) =>
+        Process.Start(new ProcessStartInfo(Upgrader.ReleasePage((offer as Upgrader.Manifest)?.Tag ?? offerFor)) { UseShellExecute = true });
+
+    public void HandoverNote(string line)
+    {
+        AddLog(line);
+        HandoverStatus.Text = line;
+    }
+
+    public void HandoverProgress(double f) => HandoverBar.Value = Math.Clamp(f, 0, 1);
+
     // ================= the update (Updater.cs): the game started this app with --update <folder> =================
 
     CancellationTokenSource? download;
@@ -1384,13 +1536,14 @@ public partial class MainWindow : Window
         download = null;
         if (rows.TryGetValue("download", out var d)) { d.Done(); d.Small("Build tools checked"); }
         // (the saved tick also opts an existing game into DLSS. After a self-update ApplySettings has not run yet;
-        // a folder already built with DLSS keeps it, its license accepted then)
-        var dlss = BuilderSettings.Load(SettingsPath)?.Dlss == true ||
+        // a folder already built with DLSS keeps it, its license accepted then: the settings' record, or for a license accepted
+        // before the record, the SDK's LICENSE.txt)
+        var saved = BuilderSettings.Load(SettingsPath);
+        var dlss = saved?.Dlss == true ||
                    (File.Exists(System.IO.Path.Combine(folder, "ngx", "nvngx_dlss.dll")) &&
-                    File.Exists(System.IO.Path.Combine(Storage.NgxSdk, "LICENSE.txt")));
+                    (saved?.DlssLicense == true || File.Exists(System.IO.Path.Combine(Storage.NgxSdk, "LICENSE.txt"))));
         // (AMD FSR 4, the same: the saved tick with AMD's license accepted, or a folder built with FSR 4 whose AMD runtime
         // was fetched, AMD's license saved beside it then, keeps it and its runtime)
-        var saved = BuilderSettings.Load(SettingsPath);
         var fsr = (saved?.Fsr == true && saved.FsrLicense) ||
                   (File.Exists(System.IO.Path.Combine(folder, ".hookshot_fsr")) &&
                    File.Exists(System.IO.Path.Combine(folder, "amd_fidelityfx_upscaler_vk.dll")) &&

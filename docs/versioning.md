@@ -176,14 +176,20 @@ the release pull request has no checks of its own: it changes only the changelog
 ## The nightly prerelease
 
 Every push to `main` also updates `nightly`, the latest development build. Once the Linux AppImage and Windows builder
-workflows have built that commit, their release jobs move the `nightly` tag to it and replace the files of the
-`nightly` prerelease with the same files a release has (`scripts/release_upload.sh nightly ...`), `SHA256SUMS` and
-the build provenance included. The notes name the commit and its date. It is a prerelease, never "latest", and not a
-version: `nightly` is not a `v*` tag, so release-please and `git describe` ignore it; the builders and the game read it only on the Nightly track. A
-run that finishes after a newer push leaves it alone. Its new parts go to `linux-parts` and `builder-parts`, like a
-release's. Its AppImage's update information names the `nightly` release instead of `latest`, so AppImageUpdate
-updates a nightly AppImage to the next nightly. (Gear Lever reads only `latest`, `latest-pre` and `latest-all`, and
-offers the latest release for any other name.)
+workflows have built that commit, their release jobs move the `nightly` tag to it and replace the files of the `nightly`
+prerelease with the same files a release has (`scripts/release_upload.sh nightly ...`), `SHA256SUMS` and the build
+provenance included. It is a prerelease, never "latest", and not a version: `nightly` is not a `v*` tag, so
+release-please and `git describe` ignore it; the builders and the game read it only on the Nightly track. The tag only
+moves forward: a run takes the nightly when its commit comes after the one the tag holds, even while newer pushes are
+still building, so it keeps up during a run of merges instead of waiting for `main` to be quiet. The tag is moved as a
+fast-forward, which GitHub refuses when the other platform's run has moved it past this commit meanwhile; a run of an
+older commit (or a re-run of an old one) leaves it alone. Each platform's files are one commit's and named by it (the
+AppImage and the RecompLauncher zip by their version, `hookshot-linux.txt` and `hookshot-setup.txt` by their tag, which
+is what each platform's updaters read), but the two builds finish at different times, so while `main` moves one
+platform's files can be a commit or two behind the other's; the tag is at the newest. Its new parts go to `linux-parts`
+and `builder-parts`, like a release's. Its AppImage's update information names the `nightly` release instead of
+`latest`, so AppImageUpdate updates a nightly AppImage to the next nightly. (Gear Lever reads only `latest`,
+`latest-pre` and `latest-all`, and offers the latest release for any other name.)
 
 ## The rc prerelease
 
@@ -229,6 +235,16 @@ own update check (`host/hos_update.c`) follows the track of the folder's version
 `builder/HookshotBuilder/Updater.cs`, `builder/linux/linux_update.py` and `tests/test_update_tracks.py`. A release
 candidate's and the nightly's `HookshotBuilder.exe` are built with `HOOKSHOT_SETUP_RELEASE`, so started with no `--tag`
 they install their own release (`builder/setup/setup.c`).
+
+### Upgrading to the launcher
+
+From 2.2 on, before a builder updates, it asks whether the release it would update to ships the Hookshot Launcher (3.0):
+such a release has one more file, `hookshot-launcher.txt`. When it does, the builder's Update becomes Upgrade, which
+shows what will happen and, once the player agrees, installs the launcher, hands the game folder and the builder's
+settings over to it and starts it (`builder/HookshotBuilder/Upgrader.cs`, `builder/linux/linux_upgrade.py`). Once the
+launcher is installed, the builder passes `--launch` and `--update` on to it, and the game's own update offer on Linux
+starts it instead of the builder. Builders older than 2.2 land on the same hand-over screen in one update. The contract
+between the two sides is [launcher-upgrade.md](launcher-upgrade.md).
 
 ## The files of a release
 
