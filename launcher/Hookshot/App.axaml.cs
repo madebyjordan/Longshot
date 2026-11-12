@@ -12,14 +12,12 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            // (--launch <folder>: the game folder's starter. --update <folder> --tag <tag>: the game's own update offer, answered
-            // yes there, host/hos_update.c: that release brought into the folder at once)
-            var args = desktop.Args ?? Array.Empty<string>();
-            string? After(string name) => args.SkipWhile(a => a != name).Skip(1).FirstOrDefault();
-            var folder = After("--launch") ?? After("--update") ?? "";
-            var tag = After("--update") != null ? After("--tag") : null;
+            // (--launch <folder>: the game folder's starter. --update <folder> [--tag <tag>]: the game's own update offer, answered
+            // yes there, host/hos_update.c, or a 2.x Builder passing it on: that release brought into the folder at once.
+            // Handover.ReadArgs: the 2.x Builder's command line, docs/launcher-upgrade.md section 4)
+            var start = Handover.ReadArgs(desktop.Args ?? Array.Empty<string>());
             Builders.Remember();   // (the game folders' starters open this launcher: Builders.cs)
-            desktop.MainWindow = new MainWindow(GameFolder.Read(folder), MainWindow.Preview.FromEnvironment(), tag);
+            desktop.MainWindow = new MainWindow(GameFolder.Read(start.Folder ?? ""), MainWindow.Preview.FromEnvironment(), start.Tag, start.Update);
         }
         base.OnFrameworkInitializationCompleted();
     }

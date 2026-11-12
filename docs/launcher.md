@@ -13,7 +13,10 @@ dotnet build launcher/Hookshot/Hookshot.csproj
 dotnet run --project launcher/Hookshot -- --launch <game folder>
 ```
 
-`--launch <folder>` opens the launcher of that game folder (any folder works, a missing one too).
+`--launch <folder>` opens the launcher of that game folder (any folder works, a missing one too). It takes the 2.x
+Builder's command line too, as [launcher-upgrade.md](launcher-upgrade.md) section 4 asks: `--update <folder> [--tag <tag>]
+[--fetched]` (that release brought into the folder; with no tag, the latest when it is newer) and `--play [<folder>]` (the
+game started with no window; the folder built last when none is named).
 
 The build runs the trim and AOT analyzers (NativeAOT is on in `Publish.props`) and treats warnings as errors. Code that
 needs reflection the trimmer cannot see, such as `JsonSerializer` without a source-generated context, fails
@@ -32,7 +35,7 @@ scripts/launcher/publish.sh     # Linux: build/launcher/Hookshot-Launcher-<versi
 Both publish with NativeAOT, which compiles for the system you publish on:
 
 - **Windows** needs Visual Studio's C++ tools ("Desktop development with C++"). The script finds them through vswhere.
-  It also builds `HookshotBuilder-Setup.exe` from `builder/setup/setup.c` into the zip, beside `Hookshot.exe`, with
+  It also builds `HookshotBuilder-Setup.exe` from `builder/setup/setup.c` into the zip, beside `HookshotLauncher.exe`, with
   llvm-mingw (`LLVM_MINGW`, or the one an installed Hookshot Builder has). The launcher installs each release's builder
   with that setup's engine mode, which the setups in earlier releases do not have.
 - The Linux AppImage is `Hookshot-Launcher-<version>-x86_64.AppImage`, apart from the Builder's
@@ -56,8 +59,10 @@ launcher and keeps the zip, the AppImage and the smoke-test screenshots as the r
 `publish.ps1` also makes `build/launcher/Hookshot-Installer.exe`: `launcher/installer/installer.c` with the portable zip appended
 to it, then the zip's length and `HSZIP001`, which it reads from its own end. It needs no administrator:
 
-- the launcher goes in `%LOCALAPPDATA%\Programs\Hookshot`, unpacked beside it with Windows' own `tar.exe` and swapped in
-  whole, so an install that stops half way, or one over a launcher that is running, leaves the one before as it was;
+- the launcher goes in `%LOCALAPPDATA%\HookshotLauncher\app` (`HOOKSHOT_LAUNCHER_HOME` moves the home), where a 2.x
+  Builder's hand-over installs it too, so a PC has one launcher whichever way it came. It is unpacked beside it with
+  Windows' own `tar.exe` and swapped in whole, so an install that stops half way, or one over a launcher that is running,
+  leaves the one before as it was. A zip without `HookshotLauncher.exe` at its root is refused;
 - Hookshot goes in the Start menu, on the desktop and in Settings > Apps, whose Uninstall runs `Uninstall.exe` (the installer
   without its zip);
 - `/S` installs with no questions and starts nothing; `Uninstall.exe /uninstall [/S]` uninstalls.
@@ -77,6 +82,32 @@ moved or removed since is passed over for the installed builder, as before.
 Releases before the launcher put starters in their game folders that do not know it, so after each build or update the
 launcher puts in its own: the setup it ships on Windows, the script it carries on Linux.
 
+## From a 2.x Builder
+
+A Builder from 2.2 on hands a player over to this launcher when the release it would update to ships one
+([launcher-upgrade.md](launcher-upgrade.md), NotRexed/Hookshot#2722). This launcher's side of that contract:
+
+- **Where it lives.** `%LOCALAPPDATA%\HookshotLauncher\app\HookshotLauncher.exe` on Windows (the executable is named so, and
+  the portable zip's root holds it), `${XDG_DATA_HOME:-~/.local/share}/hookshot/launcher/Hookshot.AppImage` on Linux.
+  `HOOKSHOT_LAUNCHER_HOME` moves both.
+- **What it takes in** (`launcher/Hookshot/Handover.cs`). At every start, before the window shows, each `<home>/import/*.json`
+  the Builder dropped is read and deleted (one it cannot read is kept as `.json.bad`). With no settings of its own yet, the
+  import's settings become its settings (the game files, DLSS, FSR 4, prepared shaders, build memory, the track, and the
+  work folder on Windows); with settings already, they stay, and the import's folder becomes the one opened with nothing
+  asked only when the saved one holds no game. On Linux, a first start with nothing dropped reads the Builder's
+  `~/.config/hookshot/builder.ini` instead. On Windows nothing needs reading: the launcher and the Builder share
+  `builder-settings.json`.
+- **Its builds stay the Builder's.** The contract leaves `builds.json` and the versions to the launcher. This one installs
+  and drives each release's builder in the Builder's own folder (`HookshotBuilder`, `hookshot/builder`), as the WPF and Tk
+  launchers do, so there is nothing to move. A 2.x Builder's "Free up space" can still remove versions there; after the
+  hand-over the Builder only passes its starts on to the launcher.
+- **The release.** `hookshot-launcher.txt` names the zip and the AppImage, with their SHA-256 and size
+  (`scripts/launcher/manifest.py`). `launcher.yml` writes and uploads it after them, only while the repository variable
+  `CI_LAUNCHER_HANDOVER` is `true`: every 2.2+ Builder that updates to such a release offers the move.
+
+`tests/test_launcher_handover.py` checks this against the contract's sample files and an import file the Linux upgrader
+writes itself; `tests/test_launcher_manifest.py` checks the release file with the Builders' own parser.
+
 ## Smoke test without a screen
 
 Both scripts run the published launcher once with:
@@ -92,7 +123,7 @@ The PNG must exist and be 960x640. On Linux it runs twice: from the AppDir, then
 
 ```powershell
 $env:HOOKSHOT_UI_SHOT = "$PWD\shot.png"; $env:HOOKSHOT_LATEST_TAG = 'v2.1.0,v2.0.14'
-build\launcher\win-x64\zip\Hookshot\Hookshot.exe --launch C:\nowhere
+build\launcher\win-x64\zip\HookshotLauncher\HookshotLauncher.exe --launch C:\nowhere
 ```
 
 ## Sizes and start times

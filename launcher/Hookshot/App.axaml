@@ -2,6 +2,6 @@
              x:Class="Hookshot.Launcher.App" RequestedThemeVariant="Dark">
   <Application.Styles>
     <FluentTheme/>
-    <StyleInclude Source="avares://Hookshot/Styles.axaml"/>
+    <StyleInclude Source="avares://HookshotLauncher/Styles.axaml"/>
   </Application.Styles>
 </Application>

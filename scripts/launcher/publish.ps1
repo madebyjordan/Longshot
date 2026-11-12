@@ -5,7 +5,7 @@
 #   scripts/launcher/publish.ps1 -Jit        the JIT build instead (trimmed, ReadyToRun, one file): no C++ tools needed
 #   scripts/launcher/publish.ps1 -NoSmoke    without the check
 #
-# Beside Hookshot.exe goes HookshotBuilder-Setup.exe (builder/setup/setup.c, built here as .github/workflows/windows-builder.yml
+# Beside HookshotLauncher.exe goes HookshotBuilder-Setup.exe (builder/setup/setup.c, built here as .github/workflows/windows-builder.yml
 # builds it): the launcher installs each release's builder with its engine mode, which the setups of the releases before it
 # do not have. It is built with llvm-mingw: LLVM_MINGW's, else the one an installed Hookshot Builder has in its tools.
 #
@@ -55,10 +55,11 @@ if ($Jit) { $a += '-p:HookshotJit=true' }
 & dotnet @a
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed ($LASTEXITCODE)" }
 
-# What the zip holds: the published files but the symbols, in a Hookshot folder
+# What the zip holds: the published files but the symbols, at its root (HookshotLauncher.exe there, as a release's
+# hookshot-launcher.txt names the zip, docs/launcher-upgrade.md: a 2.x Builder's hand-over and the installer unpack it so)
 $Stage = Join-Path $B "$Rid\zip"
 if (Test-Path $Stage) { Remove-Item -Recurse -Force $Stage }
-$App = Join-Path $Stage 'Hookshot'
+$App = Join-Path $Stage 'HookshotLauncher'
 New-Item -ItemType Directory -Force $App | Out-Null
 Get-ChildItem $Publish -Recurse -File | Where-Object { $_.Extension -notin '.pdb', '.dbg' } | ForEach-Object {
     $rel = $_.FullName.Substring($Publish.Length + 1)
@@ -115,16 +116,17 @@ function Test-Launcher([string]$Exe, [string]$Png) {
     if ($w -ne 960 -or $ht -ne 640) { throw "smoke test: $Png is ${w}x$ht, not 960x640" }
     "smoke test: $Png, ${w}x$ht, $ms ms"
 }
-if (-not $NoSmoke) { Test-Launcher (Join-Path $App 'Hookshot.exe') (Join-Path $B "smoke-$Rid.png") }
+if (-not $NoSmoke) { Test-Launcher (Join-Path $App 'HookshotLauncher.exe') (Join-Path $B "smoke-$Rid.png") }
 
 $Zip = Join-Path $B "Hookshot-$Version-Windows-x64-portable.zip"
 if (Test-Path $Zip) { Remove-Item $Zip }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-[IO.Compression.ZipFile]::CreateFromDirectory($App, $Zip, [IO.Compression.CompressionLevel]::Optimal, $true)
+[IO.Compression.ZipFile]::CreateFromDirectory($App, $Zip, [IO.Compression.CompressionLevel]::Optimal, $false)
 '{0}: {1:N1} MB' -f $Zip, ((Get-Item $Zip).Length / 1MB)
 
 # The installer (launcher/installer/installer.c): the program, then the zip above, then its length and "HSZIP001", which it reads
-# from its own end. It installs for this user only (%LOCALAPPDATA%\Programs\Hookshot), with shortcuts and a Settings > Apps entry
+# from its own end. It installs for this user only (%LOCALAPPDATA%\HookshotLauncher\app, where a 2.x Builder's hand-over
+# installs it too), with shortcuts and a Settings > Apps entry
 $InstallerWork = Join-Path $B "$Rid\installer"
 New-Item -ItemType Directory -Force $InstallerWork | Out-Null
 Push-Location launcher/installer
@@ -160,13 +162,13 @@ if (-not $NoSmoke) {
     $is = Join-Path $B "$Rid\install-smoke"
     if (Test-Path $is) { Remove-Item -Recurse -Force $is }
     $saved = @{}
-    $vars = @{ HOOKSHOT_INSTALL_DIR = (Join-Path $is 'Hookshot'); HOOKSHOT_INSTALL_LINKS = (Join-Path $is 'links');
+    $vars = @{ HOOKSHOT_INSTALL_DIR = (Join-Path $is 'app'); HOOKSHOT_INSTALL_LINKS = (Join-Path $is 'links');
                HOOKSHOT_INSTALL_KEY = 'Hookshot-publish-smoke'; HOOKSHOT_SETUP_BASE = (Join-Path $is 'builders') }
     foreach ($k in $vars.Keys) { $saved[$k] = [Environment]::GetEnvironmentVariable($k); [Environment]::SetEnvironmentVariable($k, $vars[$k]) }
     try {
         $p = Start-Process $Installer -ArgumentList '/S' -PassThru -Wait
         if ($p.ExitCode -ne 0) { throw "installer smoke test: exit $($p.ExitCode)" }
-        $installed = Join-Path $vars.HOOKSHOT_INSTALL_DIR 'Hookshot.exe'
+        $installed = Join-Path $vars.HOOKSHOT_INSTALL_DIR 'HookshotLauncher.exe'
         Test-Launcher $installed (Join-Path $B "smoke-$Rid-installed.png")
         $p = Start-Process (Join-Path $vars.HOOKSHOT_INSTALL_DIR 'Uninstall.exe') -ArgumentList '/uninstall', '/S' -PassThru -Wait
         $until = (Get-Date).AddSeconds(20)

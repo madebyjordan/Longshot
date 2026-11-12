@@ -3,13 +3,13 @@
      path data (builder/HookshotBuilder/MainWindow.xaml), so the two draw the same -->
 <Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:hb="using:HookshotBuilder"
         x:Class="Hookshot.Launcher.MainWindow" Title="Hookshot" Width="960" Height="640" MinWidth="960" MinHeight="640"
-        Background="#121212" WindowStartupLocation="CenterScreen" Icon="avares://Hookshot/Assets/hookshot.png"
+        Background="#121212" WindowStartupLocation="CenterScreen" Icon="avares://HookshotLauncher/Assets/hookshot.png"
         RenderOptions.TextRenderingMode="Antialias">
   <!-- (text smoothed the same way on every system, not by each one's own hinting: the screen is the same picture on Windows and
        Linux) -->
   <Window.Resources>
     <StreamGeometry x:Key="StripShape">M442.631 118.999C448.417 120.005 452.962 121.032 453.489 121.045 454.487 121.07 475.335 122.287 486.302 122.555 492.957 122.718 503.52 122.793 511 122.832 511 122.832 511 209.654 511 209.654 507.192 209.846 503.557 210.032 500.7 210.184 489.689 210.771 468.701 212.289 467.693 212.334 466.816 212.373 448.015 213.053 438.322 213.404 428.277 213.767 422.536 210.245 407.737 214.229 393.317 218.111 390.477 212.062 381.226 212.077 379.3 211.44 377.766 210.981 374.519 210.872 371.312 210.795 368.683 210.668 366.926 210.58 366.565 210.561 366.344 210.703 366.319 210.868 366.299 211 366.404 211.146 366.666 211.24 367.285 211.46 368.092 211.706 369.122 211.973 369.942 212.176 370.856 212.491 371.844 212.858 361.446 214.11 348.69 216.408 348.008 216.433 347.223 216.461 332.4 217.028 322.124 217.407 322.124 217.407 254 217.407 254 217.407 254 217.407 254 118.999 254 118.999 254 118.999 442.631 118.999 442.631 118.999Z</StreamGeometry>
-    <FontFamily x:Key="Serif">avares://Hookshot/Assets/Fonts#Marcellus</FontFamily>
+    <FontFamily x:Key="Serif">avares://HookshotLauncher/Assets/Fonts#Marcellus</FontFamily>
   </Window.Resources>
   <Window.Styles>
     <!-- Play: the torn strip in the accent, lighter under the pointer, darker pressed; at 0.2 while it cannot be pressed -->
@@ -165,7 +165,7 @@
     <!-- the window's name, at the left of its top 48, as the drawing has it -->
     <StackPanel Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Left" Height="48" Margin="16,0,0,0" IsHitTestVisible="False"
                 Spacing="16" ZIndex="2">
-      <Image Source="avares://Hookshot/Assets/hookshot.png" Width="16" Height="16" VerticalAlignment="Center"/>
+      <Image Source="avares://HookshotLauncher/Assets/hookshot.png" Width="16" Height="16" VerticalAlignment="Center"/>
       <TextBlock Text="Hookshot" FontSize="12" Foreground="#E6FFFFFF" VerticalAlignment="Center"/>
     </StackPanel>
 

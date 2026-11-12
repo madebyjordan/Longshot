@@ -7,7 +7,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>Hookshot</AssemblyName>
+    <AssemblyName>HookshotLauncher</AssemblyName>   <!-- (HookshotLauncher.exe: the name docs/launcher-upgrade.md gives it, which a 2.x Builder's hand-over installs and starts) -->
     <RootNamespace>Hookshot.Launcher</RootNamespace>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>

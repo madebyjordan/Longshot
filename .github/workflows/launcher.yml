@@ -211,3 +211,16 @@ jobs:
         run: >-
           scripts/release_upload.sh "${RELEASE_TAG:-nightly}" dist/Hookshot-Installer.exe dist/Hookshot-*-Windows-x64-portable.zip
           dist/Hookshot-Launcher-*-x86_64.AppImage
+      # hookshot-launcher.txt, after the files it names are there: what tells a 2.x Builder (2.2 on) that this release ships the
+      # launcher, so that its Update becomes Upgrade and hands the player's game folder over (docs/launcher-upgrade.md,
+      # scripts/launcher/manifest.py). Every such Builder that updates to this release offers it, so it is off until the
+      # maintainers turn the hand-over on: the repository variable CI_LAUNCHER_HANDOVER set to 'true'. A release made before
+      # can be given it by hand (the same command, then release_upload.sh). The nightly's tag must be its setup lists' own:
+      # pass it as --tag when it is not the version in the zip's name
+      - name: hookshot-launcher.txt (the 2.x Builders' hand-over)
+        if: vars.CI_LAUNCHER_HANDOVER == 'true'
+        run: |
+          python3 -I scripts/launcher/manifest.py --release "${RELEASE_TAG:-nightly}" ${RELEASE_TAG:+--tag "$RELEASE_TAG"} \
+            --repo "$GH_REPO" dist/Hookshot-*-Windows-x64-portable.zip dist/Hookshot-Launcher-*-x86_64.AppImage > dist/hookshot-launcher.txt
+          cat dist/hookshot-launcher.txt
+          scripts/release_upload.sh "${RELEASE_TAG:-nightly}" dist/hookshot-launcher.txt

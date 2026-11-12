@@ -35,6 +35,7 @@ public partial class MainWindow : Window
     bool detailsShown;
     string? readyNote;                       // (under Build Game once, after a build: that the game is ready, and in how long)
     readonly string? updateTag;              // (the game's own offer: hookshot --update <folder> --tag <tag>, hos_update.c)
+    readonly bool update;                    // (--update <folder>, with or without --tag: a 2.x Builder passes it on, docs/launcher-upgrade.md)
 
     /// (what the window was asked to show first: the menu open on a tab, the older releases unfolded, pre-releases on.
     /// Development: HOOKSHOT_UI_PREVIEW=menu,tab=build|releases|settings,older,pre)
@@ -53,7 +54,7 @@ public partial class MainWindow : Window
 
     public MainWindow() : this(GameFolder.Read(""), new Preview(false, null, false, false)) { }
 
-    internal MainWindow(GameFolder folder, Preview preview, string? updateTag = null)
+    internal MainWindow(GameFolder folder, Preview preview, string? updateTag = null, bool update = false)
     {
         var saved = BuilderSettings.Load(Builders.SettingsPath) ?? new BuilderSettings();
         // (a portable home keeps them relative to itself: whole again here)
@@ -63,6 +64,7 @@ public partial class MainWindow : Window
         if (folder.Path.Length == 0 && saved.Out is { Length: > 0 } last && GameFolder.Read(last) is { HasGame: true } before) folder = before;
         this.folder = folder;
         this.updateTag = updateTag;
+        this.update = update || updateTag != null;
         InitializeComponent();
         Chrome();
         olderOpen = preview.Older;
@@ -133,7 +135,7 @@ public partial class MainWindow : Window
         // (no game yet: the menu opens on Build; with one, on Releases)
         (folder.HasGame ? TabReleases : TabBuild).IsChecked = true;
         if (preview.Tab != null) (preview.Tab == "build" ? TabBuild : preview.Tab == "settings" ? TabSettings : TabReleases).IsChecked = true;
-        ShowMenu(preview.Menu || !folder.HasGame || updateTag != null);
+        ShowMenu(preview.Menu || !folder.HasGame || this.update);
         ShowPage();
         ShowLowMem();
         CheckSource();
@@ -141,11 +143,12 @@ public partial class MainWindow : Window
         Ready = Start();
     }
 
-    /// (the releases asked for; then the game's own offer, when it opened this: that release brought, as it was asked there)
+    /// (the releases asked for; then the game's own offer, when it opened this: that release brought, as it was asked there.
+    /// --update with no --tag, as the game's offer on a release track starts the Builder: the latest, only when it is newer)
     async Task Start()
     {
         await CheckReleases(say: false);
-        if (updateTag != null && folder.HasGame && job == null) await Bring(updateTag, ask: false);
+        if (update && folder.HasGame && job == null && (updateTag ?? (NewerOut() ? latest : null)) is { } to) await Bring(to, ask: false);
     }
 
     /// (development, Shot.cs: a button pressed with no screen, and how far the work under way is)

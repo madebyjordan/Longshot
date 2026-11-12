@@ -3,7 +3,9 @@
    little-endian, and "HSZIP001"). Installing:
      - the zip unpacked with Windows' own tar.exe beside the install folder, then swapped in whole: an install stopped half way, or
        one over a launcher that is running, leaves the one before as it was;
-     - %LOCALAPPDATA%\Programs\Hookshot: Hookshot.exe and its files, and Uninstall.exe (this program without the zip);
+     - %LOCALAPPDATA%\HookshotLauncher\app: HookshotLauncher.exe and its files, and Uninstall.exe (this program without the zip).
+       That is where a 2.x Builder's hand-over installs the launcher too (docs/launcher-upgrade.md section 2), so there is one
+       launcher on the PC whichever way it came;
      - Hookshot in the Start menu and on the desktop;
      - Hookshot in Settings > Apps (HKCU\...\Uninstall\Hookshot), which runs Uninstall.exe;
      - then Hookshot started.
@@ -12,7 +14,8 @@
 
    Hookshot-Installer.exe [/S]          install (/S: no questions, nothing started after)
    Uninstall.exe /uninstall [/S]        uninstall
-   For checks without touching this PC's own (tests/test_launcher_installer.py): HOOKSHOT_INSTALL_DIR (the install folder),
+   For checks without touching this PC's own (tests/test_launcher_installer.py): HOOKSHOT_LAUNCHER_HOME (the launcher's home, as
+   the hand-over has it: the install folder is its app), HOOKSHOT_INSTALL_DIR (the install folder itself),
    HOOKSHOT_INSTALL_LINKS (a folder for the two shortcuts), HOOKSHOT_INSTALL_KEY (the Apps entry's key name),
    HOOKSHOT_SETUP_BASE (the builders' folder, as the setup has it), HOOKSHOT_INSTALL_LOG (what it would say, to that file).
 
@@ -104,7 +107,13 @@ static void env_or(wchar_t *out, const wchar_t *name, int csidl, const wchar_t *
 static wchar_t g_dir[BIG], g_start_link[BIG], g_desk_link[BIG], g_key[BIG], g_base[BIG];
 
 static void places(void) {
-    env_or(g_dir, L"HOOKSHOT_INSTALL_DIR", CSIDL_LOCAL_APPDATA, L"Programs\\Hookshot");
+    const wchar_t *dir = _wgetenv(L"HOOKSHOT_INSTALL_DIR");
+    if (dir && *dir) wcsncpy(g_dir, dir, BIG - 1), g_dir[BIG - 1] = 0;
+    else {
+        wchar_t home[BIG];
+        env_or(home, L"HOOKSHOT_LAUNCHER_HOME", CSIDL_LOCAL_APPDATA, L"HookshotLauncher");
+        swprintf(g_dir, BIG, L"%ls\\app", home);
+    }
     const wchar_t *links = _wgetenv(L"HOOKSHOT_INSTALL_LINKS");
     if (links && *links) {
         swprintf(g_start_link, BIG, L"%ls\\Start menu\\Hookshot.lnk", links);
@@ -234,7 +243,7 @@ static int install(const wchar_t *self) {
         return 1;
     }
     wchar_t exe[BIG];
-    swprintf(exe, BIG, L"%ls\\Hookshot.exe", g_dir);
+    swprintf(exe, BIG, L"%ls\\HookshotLauncher.exe", g_dir);
     const int over = exists(exe);
     if (say(MB_YESNO | MB_ICONQUESTION,
             over ? L"Install Hookshot %hs over the one already in\n%ls?\n\nYour games, saves and builders stay as they are."
@@ -244,21 +253,23 @@ static int install(const wchar_t *self) {
         return 2;
 
     /* the zip out of this program, unpacked beside the install folder (the same drive, so the swap is a rename) */
-    wchar_t staging[BIG], old[BIG], zipfile[BIG], unpacked[BIG], cmd[BIG * 3], tar[MAX_PATH];
+    wchar_t staging[BIG], old[BIG], zipfile[BIG], unpacked[BIG], launcher[BIG], cmd[BIG * 3], tar[MAX_PATH];
     swprintf(staging, BIG, L"%ls.new", g_dir);
     swprintf(old, BIG, L"%ls.old", g_dir);
     swprintf(zipfile, BIG, L"%ls\\launcher.zip", staging);
-    swprintf(unpacked, BIG, L"%ls\\Hookshot", staging);
+    /* (the zip's root holds HookshotLauncher.exe and the rest of the app, as a release's hookshot-launcher.txt names it) */
+    swprintf(unpacked, BIG, L"%ls\\app", staging);
+    swprintf(launcher, BIG, L"%ls\\HookshotLauncher.exe", unpacked);
     rmtree(staging), rmtree(old);
-    if (SHCreateDirectoryExW(NULL, staging, NULL) != ERROR_SUCCESS) {
+    if (SHCreateDirectoryExW(NULL, unpacked, NULL) != ERROR_SUCCESS) {
         say(MB_ICONERROR, L"Hookshot could not be installed: the folder %ls could not be made.", staging);
         return 1;
     }
     GetSystemDirectoryW(tar, MAX_PATH);
     wcscat(tar, L"\\tar.exe");
     DWORD code = 1;
-    swprintf(cmd, BIG * 3, L"\"%ls\" -xf \"%ls\" -C \"%ls\"", tar, zipfile, staging);
-    if (!copy_part(self, stub, zip, zipfile) || !run_hidden(cmd, &code) || code != 0 || !exists(unpacked)) {
+    swprintf(cmd, BIG * 3, L"\"%ls\" -xf \"%ls\" -C \"%ls\"", tar, zipfile, unpacked);
+    if (!copy_part(self, stub, zip, zipfile) || !run_hidden(cmd, &code) || code != 0 || !exists(launcher)) {
         rmtree(staging);
         say(MB_ICONERROR, L"Hookshot could not be installed: its files could not be unpacked (tar.exe: %lu). Is the drive full?", code);
         return 1;

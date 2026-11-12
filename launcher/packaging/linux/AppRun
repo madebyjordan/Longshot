@@ -8,4 +8,4 @@ HERE="$(dirname "$(readlink -f "$0")")"
 # (the launcher's own path, for what it starts again or writes into a game folder: the AppImage, not its mount, which goes
 # when it exits)
 export HOOKSHOT_LAUNCHER_EXE="${APPIMAGE:-$HERE/AppRun}"
-exec "$HERE/usr/lib/hookshot-launcher/Hookshot" "$@"
+exec "$HERE/usr/lib/hookshot-launcher/HookshotLauncher" "$@"

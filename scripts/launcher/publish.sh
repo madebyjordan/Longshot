@@ -48,9 +48,9 @@ APPDIR=$B/$RID/AppDir
 rm -rf "$APPDIR"
 LIB=$APPDIR/usr/lib/hookshot-launcher
 mkdir -p "$LIB" "$APPDIR/usr/share/icons/hicolor/256x256/apps"
-# (not the symbols: Hookshot.dbg, NativeAOT's, is most of the publish folder)
+# (not the symbols: HookshotLauncher.dbg, NativeAOT's, is most of the publish folder)
 (cd "$PUB" && find . -type f ! -name '*.dbg' ! -name '*.pdb' -exec cp --parents {} "$LIB/" \;)
-chmod +x "$LIB/Hookshot"
+chmod +x "$LIB/HookshotLauncher"
 P=launcher/packaging/linux
 cp "$P/AppRun" "$APPDIR/AppRun" && chmod +x "$APPDIR/AppRun"
 cp "$P/hookshot.desktop" "$APPDIR/"
@@ -65,8 +65,8 @@ glibc_needed() {
     objdump -T "$@" 2>/dev/null | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
 }
 if command -v objdump >/dev/null; then
-    for f in "$LIB"/Hookshot "$LIB"/*.so*; do echo "  $(basename "$f"): $(glibc_needed "$f")"; done
-    echo "glibc needed: $(glibc_needed "$LIB"/Hookshot "$LIB"/*.so*) (this system: $(ldd --version | head -1 | grep -o '[0-9.]*$'))"
+    for f in "$LIB"/HookshotLauncher "$LIB"/*.so*; do echo "  $(basename "$f"): $(glibc_needed "$f")"; done
+    echo "glibc needed: $(glibc_needed "$LIB"/HookshotLauncher "$LIB"/*.so*) (this system: $(ldd --version | head -1 | grep -o '[0-9.]*$'))"
 fi
 
 # smoke <command...>: the window drawn with no display to $B/smoke-<name>.png, which must be 960x640
