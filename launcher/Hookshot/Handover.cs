@@ -44,7 +44,7 @@ static class Handover
             if (r.ValueKind != JsonValueKind.Object || !r.TryGetProperty("format", out var f) || f.ValueKind != JsonValueKind.Number ||
                 f.GetInt32() != 1)
                 return null;
-            if (Text(r, "folder") is not { } folder || !Path.IsPathFullyQualified(folder) && !folder.StartsWith('/')) return null;
+            if (Text(r, "folder") is not { } folder || !Absolute(folder)) return null;
             var version = Text(r, "version");
             var track = Text(r, "track") is { } t && t is "release" or "rc" or "nightly" ? t : TrackOf(version);
             var d = !r.TryGetProperty("default", out var def) || def.ValueKind != JsonValueKind.False;
@@ -65,6 +65,11 @@ static class Handover
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException or FormatException) { return null; }
     }
+
+    /// (an absolute path of either system, /home/... or C:\... or \\server\...: the contract's sample files are read on both)
+    static bool Absolute(string path) =>
+        path.StartsWith('/') || path.StartsWith(@"\\") ||
+        path.Length > 2 && char.IsAsciiLetter(path[0]) && path[1] == ':' && path[2] is '\\' or '/';
 
     static string? Text(JsonElement e, string name) =>
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String && v.GetString() is { Length: > 0 } s ? s : null;

@@ -65,6 +65,9 @@ static class Program
               "An import of a later format was taken.");
         Check(Handover.Parse("{\"format\": 1, \"folder\": \"Games/Hookshot\"}") == null, "An import with a relative folder was taken.");
         Check(Handover.Parse("{\"format\": 1}") == null, "An import with no folder was taken.");
+        Check(Handover.Parse("{\"format\": 1, \"folder\": \"C:Games\"}") == null, "An import with a drive-relative folder was taken.");
+        Check(Handover.Parse("{\"format\": 1, \"folder\": \"D:/Games\"}") != null && Handover.Parse("{\"format\": 1, \"folder\": \"/g\"}") != null,
+              "An absolute folder of the other system was refused (the sample files are read on both).");
         Check(Handover.Parse("not json") == null, "A file that is not JSON was taken.");
         var bare = Handover.Parse("{\"format\": 1, \"folder\": \"/g\", \"version\": \"v2.2.0\"}");
         Check(bare != null && bare.Track == "release" && !bare.Settings.PrepareLater && bare.Default,
@@ -83,7 +86,11 @@ static class Program
         Directory.CreateDirectory(dir);
         var settings = Path.Combine(dir, "builder-settings.json");
         var work = Path.Combine(dir, "work.txt");
-        var import = Handover.Parse(Read(fixtures, "import-windows.json"))!;
+        if (Handover.Parse(Read(fixtures, "import-windows.json")) is not { } import)
+        {
+            Check(false, "The Windows sample import was refused, so it could not be applied.");
+            return;
+        }
         Check(Handover.Apply(new[] { import }, settings, work), "Nothing was written for an import.");
         var got = BuilderSettings.Load(settings);
         var want = System.Text.Json.JsonSerializer.Deserialize(Read(fixtures, "builder-settings.json"), BuilderSettingsJson.Default.BuilderSettings);
