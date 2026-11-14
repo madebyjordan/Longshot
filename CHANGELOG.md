@@ -22,6 +22,13 @@ Also in it, from 1.0.0: the start-up screen's Longshot logo and lines, the shipp
   exposure no longer brightens the night. `EDEN_F32_ADD_TRACK=0` turns it off. Tested: RX 6700 XT, night matches the
   Switch 2 (dim deep blue).
 - The game-free test `test_mem_trim` passes again (picked from Hookshot #806 by monsterlag).
+- A save no longer holds up the game's other threads: its file calls (writes, size changes, the flush, the close of a
+  written file, files and folders made or deleted, files renamed) give the thread's virtual core up while the disk
+  works, as file loads already did, so the threads that wait for that core run on it meanwhile rather than without it
+  after the 250 ms escape. Picked from unixman69's Hookshot fork (`fix/save-io-vcore`). Tested: RX 9070 XT (Mesa
+  RADV 26.2.6, Linux) on Hookshot's main with the fix, not yet on Longshot: without it a save in Kakariko kept the save
+  thread's core for about 20 s and one frame took 10.2 s (Hookshot's escape is 2 s); with it, a Kakariko run that wrote
+  `account.sav` had no escape.
 
 ### Changes
 - Releases are made by hand after the build is played: the release workflow no longer runs on every push, and the
