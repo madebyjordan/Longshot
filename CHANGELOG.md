@@ -18,11 +18,12 @@ Also in it, from 1.0.0: the start-up screen's Longshot logo and lines, the shipp
   [docs/hookshot-readme.md](docs/hookshot-readme.md#build-from-source). Tested: the PR #1008 build on several players' PCs, among them an RX 6700 XT (FSR 4.1.2).
 - **The game's own anti-aliasing on AMD RDNA3 and RDNA4 cards with Mesa's RADV driver (Linux):** the game's
   anti-aliasing and upscaling networks run their matrix multiplies on the cards' 16x16x16 cooperative matrices, staged
-  through shared memory, once a self-test at start matches them against the software multiplies. Every Render
-  resolution then gets the game's network in place of the FXAA stand-in, and the movies keep their upscaler. On by
-  default with RADV only; `RX_VK_MMA_STAGED=1` tries it on other drivers (AMD's own), `RX_VK_MMA_STAGED=0` turns it
-  off. From Hookshot PR #1975 by unixman69, which Hookshot had not merged. See
-  [docs/hookshot-readme.md](docs/hookshot-readme.md). Tested: RX 9070 XT (Mesa RADV 26.2.6), the self-test passed and
+  through shared memory, once a self-test at start matches them against the software multiplies. At 100% the network
+  no longer multiplies in the slow software function; at 75% the game's network takes the place of the FXAA stand-in,
+  at 67, 58 and 50% that of a linear upscale; and the movies keep their upscaler. On by default with RADV only;
+  `RX_VK_MMA_STAGED=1` tries it on other drivers (AMD's own), `RX_VK_MMA_STAGED=0` turns it off. From Hookshot
+  PR #1975 by unixman69, which Hookshot had not merged. See [docs/hookshot-readme.md](docs/hookshot-readme.md).
+  Tested: RX 9070 XT (Mesa RADV 26.2.6) on Hookshot's main with #1975, not yet on Longshot: the self-test passed and
   every network ran on the route; at 75% the game's network at 57.3 fps against 58.2 with the stand-in.
 
 ### Fixes
