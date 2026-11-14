@@ -438,9 +438,9 @@ HLE(_ZN2nn2fs11GetFileSizeEPlNS0_10FileHandleE) {
    Horizon runs another thread on the core while this one waits for the file system, and these wait for the disk
    (FlushFile is an fdatasync on Linux, host/posix/win32_posix.c; FlushFileBuffers on Windows). With the core held, OoT's
    gmd::SaveDataMgr kept core 2 through a save in Kakariko for about 20 s while better threads asked for it: the threads
-   that wait for that core (ModuleSystemWorker2, PreActorModelCompose, ...) ran only at vc_acquire's 2 s escapes, and one
-   frame took 10.2 s. A failed call's error is read before the core is taken again (the wait for a core sets the last
-   error when it times out). */
+   that wait for that core (ModuleSystemWorker2, PreActorModelCompose, ...) ran only at vc_acquire's escapes (2 s on
+   Hookshot's main, where this was seen; 250 ms here), and one frame took 10.2 s. A failed call's error is read before
+   the core is taken again (the wait for a core sets the last error when it times out). */
 /* WriteFile(FileHandle, long offset, void const* buf, unsigned long size, WriteOption const&) */
 HLE(_ZN2nn2fs9WriteFileENS0_10FileHandleElPKvmRKNS0_11WriteOptionE) {
     Handle *fh = get_handle(c, ARG(0));
@@ -477,8 +477,8 @@ HLE(_ZN2nn2fs9CloseFileENS0_10FileHandleE) {
     Handle *fh = get_handle(c, ARG(0));
     const int away = fh->writable ? hos_vcore_away() : 0;   /* (a file read is closed with the core, as before) */
     CloseHandle(fh->h);
-    /* (the handle let go before the core is taken again: that wait can last up to the 2 s escape, and its entry would
-       name a closed file meanwhile) */
+    /* (the handle let go before the core is taken again: that wait can last up to vc_acquire's escape, 250 ms, and its
+       entry would name a closed file meanwhile) */
     free_handle(ARG(0));
     free(fh);
     if (away) hos_vcore_back();

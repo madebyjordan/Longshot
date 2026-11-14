@@ -1,10 +1,11 @@
 """A save's file calls give the virtual core up while the host's file calls run (host/nn_fs.c).
 
-OpenFile and ReadFile already gave it up (issue 1929); WriteFile, SetFileSize, FlushFile, CloseFile, CreateFile,
-DeleteFile, CreateDirectory, DeleteDirectoryRecursively and RenameFile kept it. FlushFile is an fdatasync on Linux, and
-OoT's save thread (gmd::SaveDataMgr) held its core through a save for about 20 s: the threads that wait for that core
-ran only at vc_acquire's 2 s escapes, and one frame took 10.2 s. The actual functions are compiled with stand-ins that
-count the host file calls they make and how many of them ran while the thread held its core:
+OpenFile and ReadFile already gave it up (mkw-recomp 16bc3bc); WriteFile, SetFileSize, FlushFile, CloseFile,
+CreateFile, DeleteFile, CreateDirectory, DeleteDirectoryRecursively and RenameFile kept it. FlushFile is an fdatasync on
+Linux, and OoT's save thread (gmd::SaveDataMgr) held its core through a save for about 20 s: the threads that wait for
+that core ran only at vc_acquire's escapes (2 s on Hookshot's main, where it was seen; 250 ms here), and one frame took
+10.2 s. The actual functions are compiled with stand-ins that count the host file calls they make and how many of them
+ran while the thread held its core:
 
 - every host file call runs without the core, and the core is held again when the function returns, taken once: a
   write (a whole one, a short one), a size change, a flush, the close of a file opened for writing, a file made (and
@@ -12,8 +13,8 @@ count the host file calls they make and how many of them ran while the thread he
 - the answers are the ones from before: PathAlreadyExists for a file or folder that exists although taking the core
   again sets the last error (vc_acquire's timed wait: ERROR_TIMEOUT), PathNotFound for a failed delete or rename or a
   mount that is not writable, OutOfRange for a short write;
-- a file opened for writing has its handle let go before the core is taken again (that wait can last up to the 2 s
-  escape: the handle's entry is not left naming a closed file meanwhile);
+- a file opened for writing has its handle let go before the core is taken again (that wait can last up to
+  vc_acquire's escape, 250 ms: the handle's entry is not left naming a closed file meanwhile);
 - a file opened for reading is closed with the core held, as before (no extra wait for a core per file read);
 - a thread that holds no core when it calls them takes none.
 
