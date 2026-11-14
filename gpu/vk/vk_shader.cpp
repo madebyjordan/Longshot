@@ -1148,8 +1148,10 @@ uint64_t disk_stamp() {
         // NaN guard, the matrix layout measured on this device. Without them a cache made on one GPU was used on another (a laptop's
         // integrated and dedicated GPUs), and RX_VK_NO_INVARIANT / RX_VK_NO_NAN_GUARD did nothing for programs already cached)
         using namespace Shader::Backend::SPIRV;
+        // (the staged matrix route's bits are 256 and 512, as in Hookshot: there #2513's table loop takes 8 and #2457's vendor
+        // fixes of the translation 16 to 128, and with them merged two settings on one bit would share a stamp)
         const uint32_t flags = (position_invariant ? 1u : 0u) | (frag_nan_guard ? 2u : 0u) | (mma_software ? 4u : 0u) |
-                               (mma_staged ? 8u : 0u) | (mma_staged_native ? 16u : 0u);
+                               (mma_staged ? 256u : 0u) | (mma_staged_native ? 512u : 0u);
         add(&flags, sizeof flags);
         add(mma_order_a.data(), sizeof(uint32_t) * mma_order_a.size());
         add(mma_order_b.data(), sizeof(uint32_t) * mma_order_b.size());
