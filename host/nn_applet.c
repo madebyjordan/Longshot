@@ -211,11 +211,49 @@ HLE(_ZN2nn2oe38SetUserInactivityDetectionTimeExtendedEb) {}
 HLE(_ZN2nn2oe25TryPopNotificationMessageEPj) { RET(0); }
 HLE(_ZN2nn2oe22PopNotificationMessageEv) { for (;;) hos_sleep_ns(1000000000LL); }
 
-/* ---- nn::account: one user ------------------------------------------------------------------------------------ */
-static const uint64_t user_uid[2] = {0x0000000000000001ULL, 0x5a3c9e1f0b7d2468ULL};
-HLE(_ZN2nn7account10InitializeEv) {}
+/* ---- nn::account: one user (HOS_PROFILE=1..8, or profile=0..7 and profile_name_1..8= in hookshot_options.ini) ---- */
+static uint64_t user_uid[2] = {0, 0x5a3c9e1f0b7d2468ULL};
+static char user_nickname[33];
+static void account_init(void) {
+    if (user_uid[0]) return;
+    int p = 0;
+    char names[8][33] = {{0}};
+    char path[MAX_PATH];
+    const DWORD n = hos_game_path_a(path, MAX_PATH);
+    char *slash = n ? (strrchr(path, 92) ? strrchr(path, 92) : strrchr(path, 47)) : NULL;   /* (linux: '/') */
+    if (slash) {
+        snprintf(slash + 1, (size_t)(path + MAX_PATH - slash - 1), "hookshot_options.ini");
+        FILE *f = fopen(path, "r");
+        if (f) {
+            char line[128];
+            while (fgets(line, sizeof line, f)) {
+                if (!strncmp(line, "profile=", 8)) p = atoi(line + 8);
+                else if (!strncmp(line, "profile_name_", 13) && line[13] >= '1' && line[13] <= '8' && line[14] == '=') {
+                    char *v = line + 15;
+                    size_t len = strcspn(v, "\r\n");
+                    while (len && (v[len - 1] == ' ' || v[len - 1] == '\t')) len--;
+                    while (*v == ' ' || *v == '\t') { v++; if (len) len--; }
+                    if (len > 32) len = 32;
+                    if (len) { memcpy(names[line[13] - '1'], v, len); names[line[13] - '1'][len] = 0; }
+                }
+            }
+            fclose(f);
+        }
+    }
+    if (getenv("HOS_PROFILE") && *getenv("HOS_PROFILE")) p = atoi(getenv("HOS_PROFILE")) - 1;
+    if (p < 0) p = 0;
+    if (p > 7) p = 7;
+    user_uid[0] = (uint64_t)(p + 1);
+    if (names[p][0]) memcpy(user_nickname, names[p], sizeof user_nickname);
+    else if (p == 0) snprintf(user_nickname, sizeof user_nickname, "Player");
+    else snprintf(user_nickname, sizeof user_nickname, "Player %d", p + 1);
+    hos_log("account: profile %d (%s), save %016llx%016llx", p + 1, user_nickname,
+            (unsigned long long)user_uid[1], (unsigned long long)user_uid[0]);
+}
+HLE(_ZN2nn7account10InitializeEv) { account_init(); }
 /* TryOpenPreselectedUser(UserHandle*) -> bool. A handle is three words; ours carries the uid. */
 HLE(_ZN2nn7account22TryOpenPreselectedUserEPNS0_10UserHandleE) {
+    account_init();
     G64(ARG(0)) = user_uid[0];
     G64(ARG(0) + 8) = user_uid[1];
     G64(ARG(0) + 16) = 1;
@@ -224,17 +262,20 @@ HLE(_ZN2nn7account22TryOpenPreselectedUserEPNS0_10UserHandleE) {
 HLE(_ZN2nn7account9CloseUserERKNS0_10UserHandleE) {}
 /* GetUserId(Uid*, UserHandle const&) -> Result */
 HLE(_ZN2nn7account9GetUserIdEPNS0_3UidERKNS0_10UserHandleE) {
+    account_init();
     G64(ARG(0)) = user_uid[0];
     G64(ARG(0) + 8) = user_uid[1];
     RET(0);
 }
 /* GetNickname(Nickname*, Uid const&) -> Result: Nickname is char[33] */
 HLE(_ZN2nn7account11GetNicknameEPNS0_8NicknameERKNS0_3UidE) {
+    account_init();
     memset(GP(ARG(0)), 0, 33);
-    memcpy(GP(ARG(0)), "Player", 6);
+    memcpy(GP(ARG(0)), user_nickname, strlen(user_nickname));
     RET(0);
 }
 HLE(_ZN2nn7account16GetUserExistenceEPbRKNS0_3UidE) {
+    account_init();
     *(uint8_t *)GP(ARG(0)) = G64(ARG(1)) == user_uid[0] && G64(ARG(1) + 8) == user_uid[1];
     RET(0);
 }
@@ -381,6 +422,7 @@ HLE(_ZN2nn5prepo12AsyncContextD1Ev) {}
 /* ---- (mkw-recomp) MKW's account and oe calls TOTK never made: the one user, offline ------------------------- */
 /* ListAllUsers(int* count, Uid* out, int max) -> Result */
 HLE(_ZN2nn7account12ListAllUsersEPiPNS0_3UidEi) {
+    account_init();
     const int n = (int)ARG(2) > 0 ? 1 : 0;
     if (n && ARG(1)) {
         G64(ARG(1)) = user_uid[0];
