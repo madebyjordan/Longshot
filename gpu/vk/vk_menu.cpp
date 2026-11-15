@@ -100,6 +100,15 @@ const char* tx_framegen(int v) {
 }
 const char* tx_onoff(int v) { return v ? "On" : "Off"; }
 const char* tx_profile(int v) { return v ? "Handheld" : "Docked"; }   // (opts.handheld: the Profile row)
+char profile_names[8][33] = {};
+const char* tx_save_profile(int v) {
+    static char b[64];
+    const int idx = std::clamp(v, 0, 7);
+    if (profile_names[idx][0]) snprintf(b, sizeof b, "%d: %s", idx + 1, profile_names[idx]);
+    else if (idx == 0) snprintf(b, sizeof b, "1: Player");
+    else snprintf(b, sizeof b, "%d: Player %d", idx + 1, idx + 1);
+    return b;
+}
 const char* tx_menu_shortcut(int v) {
     // (F1 is never turned off: the menu is always one key away. Esc as well, as a PC game's pause menu)
     static const char* const names[] = {"Insert or F1", "F1 only", "Insert, F1 or Esc"};
@@ -745,6 +754,9 @@ Row rows[] = {
      "The speakers the game mixes its sound for. Applies after a restart.", hn_audio_output, true, true},
 
     // Gameplay
+    {TAB_GAMEPLAY, "Save profile", &opts.profile, 0, 7, 1, tx_save_profile,
+     "Which user profile's save data the game opens (1 to 8). Custom names come from profile_name_1 to _8 in hookshot_options.ini. "
+     "Applies after a restart.", nullptr, true, true},
     {TAB_GAMEPLAY, "FPS counter", &opts.show_fps, 0, 1, 1, tx_onoff, "Frames per second in the top right corner.", hn_fps,
      false, true},
     {TAB_GAMEPLAY, "Menu size", &opts.menu_size, 1, 3, 1, tx_menu_size,
@@ -1131,6 +1143,7 @@ const char* ini_key(const Row& r) {
     if (r.value == &opts.upscale) return "upscaling";
     if (r.value == &opts.dlss) return "dlss";   // (as opts.dlss and RX_VK_DLSS)
     if (r.value == &opts.handheld) return "handheld_profile";   // (the Profile row; host/nn_applet.c reads it at the start)
+    if (r.value == &opts.profile) return "profile";   // (the Save profile row; host/nn_applet.c reads it at the start)
     if (r.value == &opts.mesh_mode) return "mesh_shaders";   // (gpu/vk/vk_main.cpp reads it as the device is made)
     static char k[32];
     size_t n = 0;
@@ -1225,7 +1238,7 @@ void mic_chosen() {
 }
 void save() {
     // (hookshot) the lines that are not the menu's are kept: the controls, pad_ and key_ (host/nn_hid.c)
-    // (and every other line the menu does not write, such as discord_app_id=: they were dropped at the next save)
+    // (and every other line the menu does not write, such as discord_app_id= and profile_name_1..8=: they were dropped at the next save)
     std::string kept, others;
     if (FILE* f = fopen(ini_path().c_str(), "r")) {
         char line[256];
@@ -2545,7 +2558,7 @@ void menu_init() {
     }
     if (FILE* f = fopen(ini_path().c_str(), "r")) {
         has_options = true;
-        char line[80];
+        char line[128];
         bool has_resolution = false;
         bool v2 = false;
         int version = 0;
@@ -2559,6 +2572,16 @@ void menu_init() {
                 if (!r.value || strcmp(line, ini_key(r))) continue;
                 const int v = atoi(eq + 1);
                 *r.value = r.value == &opts.output_res ? parse_output(eq + 1) : std::min(std::max(v, r.lo), r.hi);
+            }
+            if (!strncmp(line, "profile_name_", 13) && line[13] >= '1' && line[13] <= '8' && !line[14]) {
+                char* v = eq + 1;
+                while (*v == ' ' || *v == '\t') v++;
+                size_t len = strcspn(v, "\r\n");
+                while (len > 0 && (v[len - 1] == ' ' || v[len - 1] == '\t')) len--;
+                if (len > 32) len = 32;
+                const int idx = line[13] - '1';
+                memcpy(profile_names[idx], v, len);
+                profile_names[idx][len] = 0;
             }
             has_resolution |= !strcmp(line, "resolution");
             v2 |= !strcmp(line, "options_version");
@@ -2604,6 +2627,7 @@ void menu_init() {
     if (const char* e = getenv("HOS_REALTIME_STEP")) opts.realtime = atoi(e) != 0;
     if (const char* e = getenv("HOS_DYNRES")) opts.resolution = atoi(e) != 0 ? 0 : 1;
     if (const char* e = getenv("HOS_OUTPUT_RES")) opts.output_res = parse_output(e);
+    if (const char* e = getenv("HOS_SAVE_PROFILE")) opts.profile = std::min(std::max(atoi(e) - 1, 0), 7);
     restart_init();   // (what this run started with: the rows that take a restart differ from it once changed)
 }
 

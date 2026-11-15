@@ -292,7 +292,8 @@ HDR peak brightness show only while HDR is on.
 | Audio | Volume | 0 to 100%, in steps of 5 | 100% |
 | | Mute in background | Off, On | Off |
 | | Audio output | Auto, Stereo, 5.1 (after a restart) | Auto |
-| Gameplay | FPS counter | Off, On | Off |
+| Gameplay | Save profile | 1: Player to 8: Player 8 (after a restart) | 1: Player |
+| | FPS counter | Off, On | Off |
 | | Menu size | Small, Medium, Large | Medium |
 | | Game speed | Per frame, Real time | Real time |
 | | Text speed | Normal, 2x, 4x, Instant | Normal |
@@ -364,6 +365,9 @@ HDR peak brightness show only while HDR is on.
 - **Profile** runs the game as the console docked (at the Output resolution) or Handheld (1536x864): lighter on the GPU.
 - **Robust buffers:** a read past a buffer's end is dropped instead of stopping the GPU. Auto is on, on every card; Off
   can be faster on some NVIDIA cards.
+- **Save profile** selects which user profile's save folder (`user/save/5a3c9e1f0b7d24680000000000000001` to `...0008`) the
+  game opens. Custom names (up to 32 bytes) can be set in `hookshot_options.ini` with `profile_name_1=Link` through
+  `profile_name_8=...`; `HOS_SAVE_PROFILE=1` to `8` chooses one for a single run and wins over the menu.
 - **Game speed:** with Per frame, the game runs slower whenever it is below 60 fps. Real time keeps it at normal speed
   down to 15 fps.
 - **FPS counter** shows in the top right corner. With frame generation on, it also shows the game's own rate.
