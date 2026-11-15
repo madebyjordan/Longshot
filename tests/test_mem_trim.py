@@ -48,6 +48,20 @@ def main():
          "an ASTC upload does not check scratch allocation with its resize mode")
     need("if (!bc_scratch_layout(cmd, dst->bc_resized)) return false;" in copy,
          "a BC3 copy does not check scratch allocation with its destination resize mode")
+    layers = block(tex, "const uint32_t kBcLayers")
+    need('getenv("RX_VK_BC_SCRATCH_LAYERS")' in layers and
+         "value[0] >= '1' && value[0] <= '8' && !value[1]" in layers and ": 8u;" in layers,
+         "the scratch layer override does not retain the default for absent or invalid values")
+    for make in ("bool bc_scratch_make(", "bool bc_scratch2_make("):
+        alloc = block(tex, make)
+        need("ii.arrayLayers = kBcLayers;" in alloc and "0, 1, 0, kBcLayers}" in alloc,
+             f"{make} does not size its image and view together")
+    need("* kBcLayers * 16" in block(tex, "bool bc_scratch_make("),
+         "the BC3 output buffer does not follow the scratch layer count")
+    need(block(tex, "bool bc_scratch_layout(").count("0, 1, 0, kBcLayers}") == 2,
+         "a scratch layout transition does not cover the allocated array")
+    need("k1 - k0 < kBcLayers" in astc and "std::min(kBcLayers, layers - l0)" in copy,
+         "a BC3 encode route can exceed the scratch capacity")
     need("bc_have = false" in block(tex, "void bc_scratch_idle("), "the scratch given back is still taken for made")
     need("dead.push_back" in block(tex, "void bc_scratch_idle("), "the scratch is freed with no wait for the GPU")
     need("total_bytes -= std::min(total_bytes, tex.bytes + tex.pad)" in tex, "a texture leaves the budget by its texels only")

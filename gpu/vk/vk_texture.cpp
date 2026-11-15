@@ -345,7 +345,12 @@ struct BcPush {
 VkDescriptorSetLayout bc_set = VK_NULL_HANDLE;
 VkPipelineLayout bc_layout = VK_NULL_HANDLE;
 VkPipeline bc_pipe = VK_NULL_HANDLE;
-constexpr uint32_t kBcDim = 2048, kBcLayers = 8;   // the scratch: the largest level a BC3 texture may have
+constexpr uint32_t kBcDim = 2048;   // the scratch: the largest level a BC3 texture may have
+// Bound scratch storage and both encoders to the same layer count. The resulting BC3 images are unchanged.
+const uint32_t kBcLayers = [] {
+    const char* value = getenv("RX_VK_BC_SCRATCH_LAYERS");
+    return value && value[0] >= '1' && value[0] <= '8' && !value[1] ? uint32_t(value[0] - '0') : 8u;
+}();
 VkImage bc_scratch = VK_NULL_HANDLE;
 VmaAllocation bc_scratch_alloc = nullptr;
 VkImageView bc_scratch_view = VK_NULL_HANDLE;
@@ -359,7 +364,7 @@ VkImage bc_scratch2 = VK_NULL_HANDLE;
 VmaAllocation bc_scratch2_alloc = nullptr;
 VkImageView bc_scratch2_view = VK_NULL_HANDLE;
 bool bc_scratch2_fresh = false;
-// (the scratch and its buffer, 160 MB, are made when an upload first needs them and given back after RX_VK_BC_IDLE_S seconds
+// (the scratch and its buffer, 160 MB at eight layers, are made when an upload first needs them and given back after RX_VK_BC_IDLE_S seconds
 // (20) without one: a title or a load decodes hundreds of textures through them, steady gameplay few (the "given back" line says
 // whether it did).
 // 0: kept for good once made. They have memory objects of their own, so that freeing gives the VRAM back: VMA keeps the empty
@@ -398,6 +403,8 @@ bool bc_scratch_make() {   // (bc_mu held)
     }
     bc_scratch_fresh = true;
     bc_have = true;
+    if (kBcLayers != 8)
+        logf("vk: BC3 upload scratch: %u layers, %u MB", kBcLayers, kBcLayers * 20u);
     return true;
 }
 
@@ -564,7 +571,8 @@ void bc_scratch_idle() {
         dead.push_back(Dead{bc_last_value, bc_scratch2, bc_scratch2_alloc, {bc_scratch2_view}, {}});
         bc_scratch2 = VK_NULL_HANDLE, bc_scratch2_alloc = nullptr, bc_scratch2_view = VK_NULL_HANDLE, bc_scratch2_fresh = false;
     }
-    logf("vk: the BC3 scratch (%s) unused for %u s: given back", second ? "288 MB, both" : "160 MB", bc_idle_s());
+    logf("vk: the BC3 scratch (%u MB%s) unused for %u s: given back",
+         kBcLayers * (second ? 36u : 20u), second ? ", both" : "", bc_idle_s());
 }
 
 /// The storage view of one level (every layer) the ASTC decoder writes

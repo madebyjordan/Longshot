@@ -116,6 +116,9 @@ Designed after totk-pc-recomp's runtime/vk_*.c (MIT) and Eden's renderer_vulkan,
   (`host_shaders/`, with the Switch 2 tiling), straight from the block-linear storage; other formats are unswizzled
   on the CPU into the staging memory. Huge textures leave out top levels (`RX_VK_TEX_MAX_DIM` 2048,
   `RX_VK_TEX_MAX_MB` 512: the terrain arrays are 8192 x 8192 x 68 ASTC, 24 GB as RGBA8). New images are cleared.
+  `RX_VK_BC_SCRATCH_LAYERS=1` through `8` sets both the BC3 scratch layer capacity and the upload batch size.
+  The default is eight. Four uses 80 MiB for the main scratch image and output buffer instead of 160 MiB.
+  Fewer layers can add dispatches during loads. The output format, dimensions and mip levels are unchanged.
   An LRU budget (`RX_VK_VRAM_MB`, 4096, less when `VK_EXT_memory_budget` says the process is near its share).
   Images are VRAM only (`requiredFlags`): VMA's fallback to system memory is what ate the user's RAM once.
 - **Uploads never end a pass**: each recording has a second command buffer, submitted right before it, for uploads,
