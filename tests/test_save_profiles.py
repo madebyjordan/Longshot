@@ -33,11 +33,11 @@ def check_menu_sources() -> None:
         '{TAB_GAMEPLAY, "Save profile", &opts.profile, 0, 7, 1, tx_save_profile,',
         'if (r.value == &opts.profile) return "profile";',
         '"profile_name_"',
-        'getenv("HOS_PROFILE")',
+        'getenv("HOS_SAVE_PROFILE")',
     ):
         if needle not in menu_cpp:
             raise AssertionError(f"vk_menu.cpp: missing {needle!r}")
-    for needle in ("| Gameplay | Save profile |", "profile_name_1", "HOS_PROFILE"):
+    for needle in ("| Gameplay | Save profile |", "profile_name_1", "HOS_SAVE_PROFILE"):
         if needle not in readme:
             raise AssertionError(f"docs/hookshot-readme.md: missing {needle!r}")
 
@@ -117,7 +117,7 @@ int main(int argc, char **argv) {
     if (argc < 2) return fail("missing temp dir");
     const char *dir = argv[1];
     snprintf(fake_exe_path, sizeof fake_exe_path, "%s" SEP "game.exe", dir);
-    set_env("HOS_PROFILE", "");
+    set_env("HOS_SAVE_PROFILE", "");
 
     /* 1. Default profile (no ini, no env): Profile 1 ("Player"), original save directory */
     reset_account();
@@ -189,13 +189,13 @@ int main(int argc, char **argv) {
     imp__ZN2nn7account16GetUserExistenceEPbRKNS0_3UidE(&c);
     if (*GP(0x250) != 0) return fail("GetUserExistence should be false for inactive profile");
 
-    /* 4. HOS_PROFILE env overrides ini, clamps to 1..8, and 32-byte nickname truncation */
+    /* 4. HOS_SAVE_PROFILE env overrides ini, clamps to 1..8, and 32-byte nickname truncation */
     write_ini(dir, "profile=0\nprofile_name_8=12345678901234567890123456789012EXTRA\n");
-    set_env("HOS_PROFILE", "99");
+    set_env("HOS_SAVE_PROFILE", "99");
     reset_account();
     c.r[0] = 0x100;
     imp__ZN2nn7account22TryOpenPreselectedUserEPNS0_10UserHandleE(&c);
-    if (G64(0x100) != 8) return fail("HOS_PROFILE=99 should clamp to profile 8");
+    if (G64(0x100) != 8) return fail("HOS_SAVE_PROFILE=99 should clamp to profile 8");
 
     c.r[0] = 0x200;
     c.r[1] = 0x100;
@@ -221,6 +221,11 @@ def main() -> int:
     with open(os.path.join(ROOT, "host", "nn_fs.c"), encoding="utf-8") as f:
         fs = f.read()
 
+    ini_block = slice_between(
+        applet,
+        "int hos_ini_option(const char *key, int otherwise);",
+        "static int handheld(void)",
+    )
     account_block = slice_between(
         applet,
         "/* ---- nn::account:",
@@ -237,7 +242,7 @@ def main() -> int:
         "/* MountSaveDataReadOnly",
     )
 
-    sliced = account_block + "\n" + list_users_block + "\n" + mount_save_block
+    sliced = ini_block + "\n" + account_block + "\n" + list_users_block + "\n" + mount_save_block
     c_src = HARNESS.replace("__SLICED_CODE__", sliced)
 
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:

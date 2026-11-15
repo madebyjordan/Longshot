@@ -382,6 +382,7 @@ number is not the obvious one:
 | `sharpness`, `rumble_strength`, `motion_sensitivity_x`, `motion_sensitivity_y` | percent |
 | `mouse_sensitivity` | hundredths: 100 is 1.00 |
 | `robust_buffers` | 0 Auto (on), 1 Off, 2 On |
+| `profile` | 0 to 7 (Save profile 1 to 8; optional `profile_name_1` to `profile_name_8` set custom names up to 32 bytes) |
 | `game_speed` | 0 Per frame, 1 Real time |
 | `text_speed` | 0 Normal, 1 2x, 2 4x, 3 Instant |
 | `microphone` | 0 Off, 1 Default, 2 and up a microphone (the name in `microphone_device` decides which) |
@@ -389,7 +390,7 @@ number is not the obvious one:
 | `layout_preset` | 0 Nintendo, 1 Xbox / PC, 2 Swap Face, 3 Custom |
 
 The other rows are 0 Off and 1 On. Some are read at the start, before the menu exists, by the code that needs them:
-`handheld_profile` and `output_res` (`host/nn_applet.c`), `ultrawide` (`host/hos_main.c`), `robust_buffers`
+`handheld_profile`, `output_res` and `profile` (`host/nn_applet.c`), `ultrawide` (`host/hos_main.c`), `robust_buffers`
 (`gpu/vk/vk_main.cpp`) and the controls (`host/nn_hid.c`).
 
 ## Layout

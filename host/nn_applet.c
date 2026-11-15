@@ -211,42 +211,30 @@ HLE(_ZN2nn2oe38SetUserInactivityDetectionTimeExtendedEb) {}
 HLE(_ZN2nn2oe25TryPopNotificationMessageEPj) { RET(0); }
 HLE(_ZN2nn2oe22PopNotificationMessageEv) { for (;;) hos_sleep_ns(1000000000LL); }
 
-/* ---- nn::account: one user (HOS_PROFILE=1..8, or profile=0..7 and profile_name_1..8= in hookshot_options.ini) ---- */
+/* ---- nn::account: one user (HOS_SAVE_PROFILE=1..8, or profile=0..7 and profile_name_1..8= in hookshot_options.ini) ---- */
 static uint64_t user_uid[2] = {0, 0x5a3c9e1f0b7d2468ULL};
 static char user_nickname[33];
 static void account_init(void) {
     if (user_uid[0]) return;
-    int p = 0;
-    char names[8][33] = {{0}};
-    char path[MAX_PATH];
-    const DWORD n = hos_game_path_a(path, MAX_PATH);
-    char *slash = n ? (strrchr(path, 92) ? strrchr(path, 92) : strrchr(path, 47)) : NULL;   /* (linux: '/') */
-    if (slash) {
-        snprintf(slash + 1, (size_t)(path + MAX_PATH - slash - 1), "hookshot_options.ini");
-        FILE *f = fopen(path, "r");
-        if (f) {
-            char line[128];
-            while (fgets(line, sizeof line, f)) {
-                if (!strncmp(line, "profile=", 8)) p = atoi(line + 8);
-                else if (!strncmp(line, "profile_name_", 13) && line[13] >= '1' && line[13] <= '8' && line[14] == '=') {
-                    char *v = line + 15;
-                    size_t len = strcspn(v, "\r\n");
-                    while (len && (v[len - 1] == ' ' || v[len - 1] == '\t')) len--;
-                    while (*v == ' ' || *v == '\t') { v++; if (len) len--; }
-                    if (len > 32) len = 32;
-                    if (len) { memcpy(names[line[13] - '1'], v, len); names[line[13] - '1'][len] = 0; }
-                }
-            }
-            fclose(f);
-        }
-    }
-    if (getenv("HOS_PROFILE") && *getenv("HOS_PROFILE")) p = atoi(getenv("HOS_PROFILE")) - 1;
+    const char *e = getenv("HOS_SAVE_PROFILE");
+    int p = e && *e ? atoi(e) - 1 : ini_option("profile", 0);
     if (p < 0) p = 0;
     if (p > 7) p = 7;
     user_uid[0] = (uint64_t)(p + 1);
-    if (names[p][0]) memcpy(user_nickname, names[p], sizeof user_nickname);
-    else if (p == 0) snprintf(user_nickname, sizeof user_nickname, "Player");
-    else snprintf(user_nickname, sizeof user_nickname, "Player %d", p + 1);
+    char key[16], raw[80] = "";
+    snprintf(key, sizeof key, "profile_name_%d", p + 1);
+    if (ini_text(key, raw, sizeof raw)) {
+        char *v = raw;
+        while (*v == ' ' || *v == '\t') v++;
+        size_t len = strlen(v);
+        while (len && (v[len - 1] == ' ' || v[len - 1] == '\t')) len--;
+        if (len > 32) len = 32;
+        if (len) { memcpy(user_nickname, v, len); user_nickname[len] = 0; }
+    }
+    if (!user_nickname[0]) {
+        if (p == 0) snprintf(user_nickname, sizeof user_nickname, "Player");
+        else snprintf(user_nickname, sizeof user_nickname, "Player %d", p + 1);
+    }
     hos_log("account: profile %d (%s), save %016llx%016llx", p + 1, user_nickname,
             (unsigned long long)user_uid[1], (unsigned long long)user_uid[0]);
 }

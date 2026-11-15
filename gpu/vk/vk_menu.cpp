@@ -2627,7 +2627,7 @@ void menu_init() {
     if (const char* e = getenv("HOS_REALTIME_STEP")) opts.realtime = atoi(e) != 0;
     if (const char* e = getenv("HOS_DYNRES")) opts.resolution = atoi(e) != 0 ? 0 : 1;
     if (const char* e = getenv("HOS_OUTPUT_RES")) opts.output_res = parse_output(e);
-    if (const char* e = getenv("HOS_PROFILE")) opts.profile = std::min(std::max(atoi(e) - 1, 0), 7);
+    if (const char* e = getenv("HOS_SAVE_PROFILE")) opts.profile = std::min(std::max(atoi(e) - 1, 0), 7);
     restart_init();   // (what this run started with: the rows that take a restart differ from it once changed)
 }
 

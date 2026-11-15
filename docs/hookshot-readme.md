@@ -367,7 +367,7 @@ HDR peak brightness show only while HDR is on.
   can be faster on some NVIDIA cards.
 - **Save profile** selects which user profile's save folder (`user/save/5a3c9e1f0b7d24680000000000000001` to `...0008`) the
   game opens. Custom names (up to 32 bytes) can be set in `hookshot_options.ini` with `profile_name_1=Link` through
-  `profile_name_8=...`; `HOS_PROFILE=1` to `8` chooses one for a single run and wins over the menu.
+  `profile_name_8=...`; `HOS_SAVE_PROFILE=1` to `8` chooses one for a single run and wins over the menu.
 - **Game speed:** with Per frame, the game runs slower whenever it is below 60 fps. Real time keeps it at normal speed
   down to 15 fps.
 - **FPS counter** shows in the top right corner. With frame generation on, it also shows the game's own rate.
