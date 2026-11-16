@@ -47,6 +47,23 @@ folder's settings carry over.
 
 Longshot Builder has no download yet: build it from `builder/` (see `.github/workflows/windows-builder.yml`).
 
+## Portable save ZIPs
+
+Save in the game and close it before exporting. Use your account directory under the game's _user/save_ folder.
+The tool accepts 1.1.1 save ZIPs from Longshot and NX2navi. It restores to an unused user folder for the
+game's default account. Existing user folders and archives are protected from replacement.
+
+From the source checkout:
+
+    python -I scripts/longshot_save_packages.py export "path/to/user/save/account-id" "backup.zip"
+    python -I scripts/longshot_save_packages.py restore "backup.zip" "path/to/restored-user"
+
+From the built Windows game folder, load the restored saves with the native executable:
+
+    .\bin\hookshot.exe image.bin --romfs romfs --user "path/to/restored-user"
+
+If you built without the launcher, use the executable in the game folder. Keep the backup ZIP private.
+
 ## Credits
 
 Longshot is built on Hookshot by **NotRexed** and its contributors, and on the projects Hookshot credits: Eden,
