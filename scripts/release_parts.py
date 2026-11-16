@@ -4,7 +4,7 @@ and the play profile (addresses and counts made on the development PC).
 
     python -I scripts/release_parts.py previous <out list> --repo <owner/name> [--repo ...] [--skip-tag <tag>]
         the newest stable release's hookshot-setup.txt (of the first repository that has one; not --skip-tag's, the release
-        being made); prints that release's tag. Exits 1 when no repository has one.
+        being made). Optionally fall back to --bootstrap-url with --bootstrap-sha256 when no repository has one.
     python -I scripts/release_parts.py profile <setup list> <work folder>
         the play profile (tools/work of the list's app part) into <work folder>
     python -I scripts/release_parts.py llvm-mingw <folder> [--name]
@@ -77,6 +77,15 @@ def previous(a):
                     f.write(get(url))
                 print(r["tag_name"])
                 return 0
+    if a.bootstrap_url:
+        data = get(a.bootstrap_url)
+        if hashlib.sha256(data).hexdigest() != a.bootstrap_sha256.lower():
+            print("bootstrap setup list SHA-256 mismatch", file=sys.stderr)
+            return 1
+        with open(a.out, "wb") as f:
+            f.write(data)
+        print("using pinned upstream setup list", file=sys.stderr)
+        return 0
     print("no release with a hookshot-setup.txt in %s" % ", ".join(a.repo), file=sys.stderr)
     return 1
 
@@ -206,6 +215,8 @@ def main():
     s.add_argument("out")
     s.add_argument("--repo", action="append", required=True)
     s.add_argument("--skip-tag", default="")
+    s.add_argument("--bootstrap-url")
+    s.add_argument("--bootstrap-sha256")
     s = sub.add_parser("profile")
     s.add_argument("list")
     s.add_argument("work")
@@ -218,6 +229,12 @@ def main():
     s.add_argument("--setup", required=True)
     s.add_argument("--list")
     a = p.parse_args()
+    if a.cmd == "previous" and (a.bootstrap_url or a.bootstrap_sha256):
+        if not a.bootstrap_url or not a.bootstrap_url.startswith("https://"):
+            p.error("--bootstrap-url must be HTTPS")
+        sha = a.bootstrap_sha256 or ""
+        if len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha.lower()):
+            p.error("--bootstrap-sha256 must be a 64-digit hexadecimal SHA-256")
     return {"previous": previous, "profile": profile, "llvm-mingw": llvm_mingw, "package": package}[a.cmd](a)
 
 

@@ -71,24 +71,20 @@ jobs:
           echo "version: $tag"
 
       # (the list of the newest stable release other than this tag: its Python, emsdk, CPM, wgpu-native and third_party
-      # parts and its play profile. A fork with no release takes upstream's. A release must have one; any other run goes
-      # on without, and its package lacks those parts)
+      # parts and its play profile. Bootstrap from the checksum-pinned Hookshot setup list on its official Forgejo
+      # when Longshot has no stable release with a setup list.)
       - name: The latest release's setup list
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if python -I scripts/release_parts.py previous "$RUNNER_TEMP/previous-setup.txt" \
-              --repo "$GITHUB_REPOSITORY" --repo NotRexed/Hookshot --skip-tag "$TAG"; then
-            echo "PREVIOUS=$RUNNER_TEMP/previous-setup.txt" >> "$GITHUB_ENV"
-          elif [[ $GITHUB_REF == refs/tags/* ]]; then
-            exit 1
-          else
-            echo "::warning::no earlier release's setup list: the package has only the app and .NET parts"
-          fi
+          python -I scripts/release_parts.py previous "$RUNNER_TEMP/previous-setup.txt" \
+            --repo "$GITHUB_REPOSITORY" --skip-tag "$TAG" \
+            --bootstrap-url https://git.notrexed.dev/Hookshot/Hookshot/releases/download/v2.1.0/hookshot-setup.txt \
+            --bootstrap-sha256 40a07792bb7b7834ca93295942b9e7b23ec013fca67be45cca500f7ac2353564
+          echo "PREVIOUS=$RUNNER_TEMP/previous-setup.txt" >> "$GITHUB_ENV"
 
       # (work/hookshot.ico is the builder's icon, builder/HookshotBuilder/HookshotBuilder.csproj)
       - name: Play profile
-        if: env.PREVIOUS != ''
         run: python -I scripts/release_parts.py profile "$PREVIOUS" work
 
       - name: LongshotBuilder-Setup.exe
@@ -107,12 +103,12 @@ jobs:
       - name: Package folder
         run: >-
           python -I scripts/release_parts.py package "$RUNNER_TEMP/package"
-          --publish "$RUNNER_TEMP/publish" --setup "$RUNNER_TEMP/LongshotBuilder-Setup.exe" ${PREVIOUS:+--list "$PREVIOUS"}
+          --publish "$RUNNER_TEMP/publish" --setup "$RUNNER_TEMP/LongshotBuilder-Setup.exe" --list "$PREVIOUS"
 
       - name: Setup parts
         run: |
           python -I scripts/make_setup_parts.py "$RUNNER_TEMP/package" "$TAG" dist \
-            --base "https://github.com/$GITHUB_REPOSITORY/releases/download/builder-parts" ${PREVIOUS:+--reuse "$PREVIOUS"}
+            --base "https://github.com/$GITHUB_REPOSITORY/releases/download/builder-parts" --reuse "$PREVIOUS"
           # (a release holds the setup as HookshotBuilder.exe: builder/HookshotBuilder/Updater.cs)
           cp "$RUNNER_TEMP/LongshotBuilder-Setup.exe" dist/LongshotBuilder.exe
           cat dist/hookshot-setup.txt
