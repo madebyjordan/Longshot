@@ -47,6 +47,17 @@ folder's settings carry over.
 
 Longshot Builder has no download yet: build it from `builder/` (see `.github/workflows/windows-builder.yml`).
 
+### Start with on-demand shaders
+
+Release builds normally prepare shaders and pipelines before the title screen.
+To reach the game sooner, add the following line to _hookshot_env.txt_ beside
+_image.bin_ in your game folder. Create the file there if you don't already have one.
+
+    RX_VK_PRECOMPILE=0
+
+Restart Longshot. The first visit to an area may stutter while shaders and pipelines
+compile. Remove the line to return to the normal startup shader pass.
+
 ## Credits
 
 Longshot is built on Hookshot by **NotRexed** and its contributors, and on the projects Hookshot credits: Eden,
